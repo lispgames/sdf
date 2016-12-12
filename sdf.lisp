@@ -1,4 +1,5 @@
-#++(ql:quickload '(zpb-ttf cl-vectors cl-paths cl-aa cl-aa-misc cl-paths-ttf))
+#++(ql:quickload '(zpb-ttf cl-vectors cl-paths cl-aa cl-aa-misc cl-paths-ttf
+                   opticl))
 (defpackage #:sdf
   (:use :cl :zpb-ttf))
 (in-package #:sdf)
@@ -166,19 +167,19 @@
                                    for iy below h
                                    do (funcall write ox oy
                                                (aref i (- h iy 1) ix 0)))))
-           (aa-misc:save-image png-filename out :pnm)))))))
+           (opticl:write-image-file png-filename out)))))))
 
 #++
 (time
- (make-atlas "/tmp/atlas.pnm" "/tmp/font2.met"
-             256 256
+ (make-atlas "/tmp/atlas.png" "/tmp/font2.met"
              "/windows/fonts/arial.ttf" 48
              :scale 64
-             :spread 0.2))
+             :spread 0.2
+             :string "ABCabc"))
 
 #++
 (time
- (make-atlas "/tmp/atlas.pnm" "/tmp/font2.met"
+ (make-atlas "/tmp/atlas.png" "/tmp/font2.met"
              "/windows/fonts/arial.ttf" 48
              :scale 32
              :spread 0.1))
