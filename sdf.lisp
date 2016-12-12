@@ -27,36 +27,38 @@
       (check-type ys (single-float 0.0 65536.0))
       (locally (declare (type (single-float 0.0 65536.0) xs ys fsearch)
                         (type (unsigned-byte 16) w h))
-        (loop for dy fixnum from 1 below search
-              do (flet ((x (y2)
-                          (loop for x2 from (max 0
-                                                 (floor
-                                                  (- xs (min (1+ d )
-                                                             fsearch))))
-                                  below (min w
-                                             (ceiling
-                                              (+ xs (min (1+ d)
-                                                         fsearch))))
-                                for px2 = (aref image y2 x2 0)
-                                do (when (/= px px2)
-                                     (setf d
-                                           (min d
-                                                (sqrt
-                                                 (+ (expt (- x2 xs) 2)
-                                                    (expt (float dy 1.0) 2)))))))))
-                   (when (< dy search)
+        (flet ((x (y2 dy)
+                 (declare (fixnum dy))
+                 (loop for x2 from (max 0
+                                        (floor
+                                         (- xs (min (1+ d )
+                                                    fsearch))))
+                         below (min w
+                                    (ceiling
+                                     (+ xs (min (1+ d)
+                                                fsearch))))
+                       for px2 = (aref image y2 x2 0)
+                       do (when (/= px px2)
+                            (setf d
+                                  (min d
+                                       (sqrt
+                                        (+ (expt (- x2 xs) 2)
+                                           (expt (float dy 1.0) 2)))))))))
+          (x (floor ys) 0)
+          (loop for dy fixnum from 1 below search
+                do (when (< dy search)
                      (let ((a (floor (- ys dy)))
                            (b (floor (+ ys dy))))
                        (declare (fixnum a b))
                        (when (> a 0)
-                         (x a))
+                         (x a dy))
                        (when (< b h)
-                         (x b)))))
-                 ;; early out of outer search loop
-                 ;; when distance to scanline is
-                 ;; more than best distance
-              when (> dy d)
-                return nil))
+                         (x b dy))))
+                   ;; early out of outer search loop
+                   ;; when distance to scanline is
+                   ;; more than best distance
+                when (> dy d)
+                  return nil)))
       (if (plusp px) d (- d)))))
 
 (defun sdf (font glyph font-scale sdf-scale spread)
