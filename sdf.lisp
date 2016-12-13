@@ -198,13 +198,23 @@
                                                                  free-rects)))))
 
 (defun pack (dimensions &key width height)
+  (labels ((largest-side (el)
+             (max (second el) (third el)))
+           (shortest-side (el)
+             (min (second el) (third el)))
+           (short-side-last ()
+             (sort dimensions #'> :key #'shortest-side))
+           (double-sorted-dimensions ()
+             (stable-sort (short-side-last) #'> :key #'largest-side)))
+
   (loop with free-rects = (list (list 0 0 width height))
-     for (id rect-width rect-height) in dimensions collect
+     for (id rect-width rect-height) in (double-sorted-dimensions)
+     collect
        (multiple-value-bind (rect new-free-rects)
            (place-rect rect-width rect-height free-rects)
          (setf free-rects new-free-rects)
          (with-rect (x y w h) rect
-           (list id x y w h)))))
+           (list id x y w h))))))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -260,8 +270,8 @@
                           collect (list i
                                         (array-dimension (cdr i) 1)
                                         (array-dimension (cdr i) 0)))
-                    :width 368
-                    :height 368))
+                    :width width
+                    :height height))
              (dims (loop for (nil x y w h) in pack
                          maximize (+ x w) into width
                          maximize (+ y h) into height
@@ -293,11 +303,11 @@
              :scale 32
              :spread 0.1))
 
-
-
 #++
 (time
- (make-atlas "/tmp/atlas.pnm" "/tmp/font2.met"
+ (make-atlas "/tmp/atlas.png" "/tmp/font2.met"
              "/Library/Fonts/Arial.ttf" 48
              :scale 32
-             :spread 0.1))
+             :spread 0.1
+             :width 300
+             :height 300))
