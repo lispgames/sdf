@@ -1,3 +1,4 @@
 (defpackage #:sdf
   (:use :cl :zpb-ttf)
-  (:export #:make-atlas))
+  (:export #:make-atlas
+           #:save-atlas))

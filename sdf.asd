@@ -7,4 +7,5 @@
   :serial t
   :components ((:file "packages")
                (:file "binpack")
+               (:file "metrics")
                (:file "sdf")))

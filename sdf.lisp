@@ -98,8 +98,7 @@
          #++(aa-misc:save-image "/tmp/font2h.pnm" image :pnm)
          dest)))))
 
-(defun make-atlas (png-filename metrics-filename
-                   font-name pixel-size
+(defun make-atlas (font-name pixel-size
                    &key (scale 8) (spread 0.1)
                      (string *default-characters*)
                      width height)
@@ -111,12 +110,12 @@
                          collect (zpb-ttf:find-glyph c ttf)))
            (font-height (- (zpb-ttf:ascender ttf)
                            (zpb-ttf:descender ttf)))
-           (font-scale (/ pixel-size font-height)))
+           (font-scale (/ pixel-size font-height))
+           (metrics (make-font-metrics
+                     :glyphs (loop for g in glyphs
+                                collect (make-glyph-metrics
+                                         :bounding-box (zpb-ttf:bounding-box g))))))
 
-      (list :asc (zpb-ttf:ascender ttf)
-            :desc (zpb-ttf:descender ttf)
-            :bounds (loop for g in glyphs
-                          collect (zpb-ttf:bounding-box g)))
       #++
       (format t "~%~%em = ~s = ~s ~s~%" (zpb-ttf:units/em ttf)
               (float (* (zpb-ttf:units/em ttf) font-scale))
@@ -140,6 +139,7 @@
                          maximize (+ x w) into width
                          maximize (+ y h) into height
                          finally (return (list width height)))))
+
         (time
          (let* ((out (aa-misc:make-image (first dims) (second dims) #(0 0 0)))
                 (write (aa-misc:image-put-pixel out #(255 255 255))))
@@ -150,28 +150,8 @@
                                    for iy below h
                                    do (funcall write ox oy
                                                (aref i (- h iy 1) ix 0)))))
-           (opticl:write-image-file png-filename out)))))))
+           (%make-atlas out metrics)))))))
 
-#++
-(time
- (make-atlas "/tmp/atlas.png" "/tmp/font2.met"
-             "/windows/fonts/arial.ttf" 48
-             :scale 64
-             :spread 0.2
-             :string "ABCabc"))
-
-#++
-(time
- (make-atlas "/tmp/atlas.png" "/tmp/font2.met"
-             "/windows/fonts/arial.ttf" 48
-             :scale 32
-             :spread 0.1))
-
-#++
-(time
- (make-atlas "/tmp/atlas.png" "/tmp/font2.met"
-             "/Library/Fonts/Arial.ttf" 48
-             :scale 32
-             :spread 0.1
-             :width 300
-             :height 300))
+(defun save-atlas (atlas png-filename metrics-filename)
+  (declare (ignore metrics-filename))
+  (opticl:write-image-file png-filename (atlas-image atlas)))
