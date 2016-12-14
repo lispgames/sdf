@@ -1,7 +1,3 @@
-#++(ql:quickload '(zpb-ttf cl-vectors cl-paths cl-aa cl-aa-misc cl-paths-ttf
-                   opticl))
-(defpackage #:sdf
-  (:use :cl :zpb-ttf))
 (in-package #:sdf)
 
 (defparameter *default-characters*
