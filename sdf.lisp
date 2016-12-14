@@ -1,7 +1,7 @@
 (in-package #:sdf)
 
 (defparameter *default-characters*
-  "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789.,;:?!@#$%^&*()-_<>'\"$[] ")
+  "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789.,;:?!@#$%^&*()-_<>'\"[]/\\| ")
 
 (defun dist (image x y w h search sdf-scale)
   (declare (optimize speed (debug 0)))
@@ -96,61 +96,90 @@
                         do (funcall write x y (+ 128 (* 128 (/ d search))))))
          #++(aa-misc:save-image "/tmp/font2.pnm" dest :pnm)
          #++(aa-misc:save-image "/tmp/font2h.pnm" image :pnm)
-         dest)))))
+         (values dest padding))))))
+
+(defmacro with-glyph-data ((glyph metrics &optional (sdf (gensym)) (padding (gensym))) data &body body)
+  `(destructuring-bind (&key ((:glyph ,glyph))
+                             ((:metrics ,metrics))
+                             ((:sdf ,sdf))
+                             ((:padding ,padding)) &allow-other-keys)
+       ,data
+     (declare (ignorable ,glyph ,metrics ,sdf ,padding))
+     ,@body))
+
+
+(defun make-kerning-table (glyph-data scale font)
+  (loop with table = (make-hash-table :test 'equal)
+     for d0 in glyph-data
+     do (loop for d1 in glyph-data
+           do (with-glyph-data (g0 m0) d0
+                (with-glyph-data (g1 m1) d1
+                  (let ((offset (zpb-ttf:kerning-offset g0 g1 font)))
+                    (unless (= offset 0)
+                      (setf (gethash (cons (glyph-character m0) (glyph-character m1)) table)
+                            (* offset scale)))))))
+     finally (return table)))
+
+(defun make-metrics (glyph-data scale ttf)
+  (make-font-metrics :glyphs (mapcar (lambda (g) (getf g :metrics)) glyph-data)
+                     :ascender (* scale (zpb-ttf:ascender ttf))
+                     :descender (* scale (zpb-ttf:descender ttf))
+                     :line-gap (* scale (zpb-ttf:line-gap ttf))
+                     :kerning-table (make-kerning-table glyph-data scale ttf)))
+
+
+(defun obtain-glyph-data (string font-scale scale spread ttf)
+  (flet ((fscale (v)
+           (ceiling (* v font-scale))))
+    (loop for c across string
+       ;; possibly check zpb-ttf:glyph-exists-p
+       ;; instead of storing box or whatever
+       ;; missing chars get replaced with?
+       for g = (zpb-ttf:find-glyph c ttf)
+       collect (multiple-value-bind (sdf padding) (sdf ttf g font-scale scale spread)
+                 (list
+                  :glyph g
+                  :metrics (make-glyph-metrics
+                            :character c
+                            :origin (list (+ (ceiling (- (* font-scale (xmin g)))) padding)
+                                          (+ (ceiling (- (* font-scale (ymin g)))) padding))
+                            :advance-width (fscale (zpb-ttf:advance-width g))
+                            :left-side-bearing (fscale (zpb-ttf:left-side-bearing g))
+                            :right-side-bearing (fscale (zpb-ttf:right-side-bearing g)))
+                  :sdf sdf)))))
+
 
 (defun make-atlas (font-name pixel-size
                    &key (scale 8) (spread 0.1)
                      (string *default-characters*)
                      width height)
   (zpb-ttf:with-font-loader (ttf font-name)
-    (let* ((glyphs (loop for c across string
-                         ;; possibly check zpb-ttf:glyph-exists-p
-                         ;; instead of storing box or whatever
-                         ;; missing chars get replaced with?
-                         collect (zpb-ttf:find-glyph c ttf)))
-           (font-height (- (zpb-ttf:ascender ttf)
+    (let* ((font-height (- (zpb-ttf:ascender ttf)
                            (zpb-ttf:descender ttf)))
            (font-scale (/ pixel-size font-height))
-           (metrics (make-font-metrics
-                     :glyphs (loop for g in glyphs
-                                collect (make-glyph-metrics
-                                         :bounding-box (zpb-ttf:bounding-box g))))))
-
-      #++
-      (format t "~%~%em = ~s = ~s ~s~%" (zpb-ttf:units/em ttf)
-              (float (* (zpb-ttf:units/em ttf) font-scale))
-              (float (* scale (zpb-ttf:units/em ttf) font-scale)))
-      (let* ((images
-               (loop for c across string
-                     for g = (zpb-ttf:find-glyph c ttf)
-                     for i from 0 ;;below 3
-                     for sdf = (sdf ttf g font-scale scale spread)
-                     collect (cons g sdf)
-                     #+do (aa-misc:save-image
-                           (format nil "/tmp/font/font~a.pnm" i) sdf :pnm)))
-             (pack (pack
-                    (loop for i in images
-                          collect (list i
-                                        (array-dimension (cdr i) 1)
-                                        (array-dimension (cdr i) 0)))
-                    :width width
-                    :height height))
-             (dims (loop for (nil x y w h) in pack
-                         maximize (+ x w) into width
-                         maximize (+ y h) into height
-                         finally (return (list width height)))))
-
+           (glyph-data (obtain-glyph-data string font-scale scale spread ttf))
+           (pack (pack (loop for g in glyph-data
+                          for sdf = (getf g :sdf)
+                          collect (list g (array-dimension sdf 1) (array-dimension sdf 0)))
+                       :width width
+                       :height height))
+           (dims (loop for (nil x y w h) in pack
+                    maximize (+ x w) into width
+                    maximize (+ y h) into height
+                    finally (return (list width height)))))
         (time
          (let* ((out (aa-misc:make-image (first dims) (second dims) #(0 0 0)))
                 (write (aa-misc:image-put-pixel out #(255 255 255))))
-           (loop for ((g . i) x y w h) in pack
-                 do (loop for ox from x
-                          for ix below w
-                          do (loop for oy from y
-                                   for iy below h
-                                   do (funcall write ox oy
-                                               (aref i (- h iy 1) ix 0)))))
-           (%make-atlas out metrics)))))))
+           (loop for (g x y w h) in pack
+              do (with-glyph-data (glyph metrics sdf padding) g
+                   (setf (glyph-bounding-box metrics) (list x y (+ x w) (+ y h)))
+                     (loop for ox from x
+                        for ix below w
+                        do (loop for oy from y
+                              for iy below h
+                              do (funcall write ox oy
+                                          (aref sdf (- h iy 1) ix 0))))))
+           (%make-atlas out (make-metrics glyph-data font-scale ttf)))))))
 
 (defun save-atlas (atlas png-filename metrics-filename)
   (declare (ignore metrics-filename))
