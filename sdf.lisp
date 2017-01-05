@@ -1,7 +1,7 @@
 (in-package #:sdf)
 
 (defparameter *default-characters*
-  "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789.,;:?!@#$%^&*()-_<>'\"$[] ")
+  "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789.,;:?!@#$%^&*()-_<>'\"[]/\\| ")
 
 (defun dist (image x y w h search sdf-scale)
   (declare (optimize speed (debug 0)))
@@ -96,214 +96,91 @@
                         do (funcall write x y (+ 128 (* 128 (/ d search))))))
          #++(aa-misc:save-image "/tmp/font2.pnm" dest :pnm)
          #++(aa-misc:save-image "/tmp/font2h.pnm" image :pnm)
-         dest)))))
+         (values dest padding))))))
 
-
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;;
-;;  MAXRECT packing
-;;
-
-(defmacro with-rect ((x y &optional (w (gensym)) (h (gensym))) rect &body body)
-  `(destructuring-bind (,x ,y ,w ,h) ,rect
-     (declare (ignorable ,x ,y ,w ,h))
+(defmacro with-glyph-data ((glyph metrics &optional (sdf (gensym)) (padding (gensym))) data &body body)
+  `(destructuring-bind (&key ((:glyph ,glyph))
+                             ((:metrics ,metrics))
+                             ((:sdf ,sdf))
+                             ((:padding ,padding)) &allow-other-keys)
+       ,data
+     (declare (ignorable ,glyph ,metrics ,sdf ,padding))
      ,@body))
 
-(defun delta-weight (w h rect)
-  (with-rect (x y rw rh) rect
-    (min (- rw w) (- rh h))))
 
-(defun find-free-rect (w h rects)
-  (loop with min-rect = (car rects)
-     with min-d = (delta-weight w h min-rect)
-     for rect in (rest rects)
-     for cur-d = (delta-weight w h rect)
-     ;; add case for when w and h of free rect exactly matches required w h
-     when (or (< min-d 0) (and (>= cur-d 0) (< cur-d min-d)))
-     do (setf min-rect rect
-              min-d cur-d)
-     finally (return (if (< min-d 0)
-                         (error "Cannot pack any more rectangles")
-                         min-rect))))
+(defun make-kerning-table (glyph-data scale font)
+  (loop with table = (make-hash-table :test 'equal)
+     for d0 in glyph-data
+     do (loop for d1 in glyph-data
+           do (with-glyph-data (g0 m0) d0
+                (with-glyph-data (g1 m1) d1
+                  (let ((offset (zpb-ttf:kerning-offset g0 g1 font)))
+                    (unless (= offset 0)
+                      (setf (gethash (cons (glyph-character m0) (glyph-character m1)) table)
+                            (* offset scale)))))))
+     finally (return table)))
 
-(defun intersectsp (r0 r1)
-  (with-rect (x0 y0 w0 h0) r0
-    (with-rect (x1 y1 w1 h1) r1
-      (and (< x0 (+ x1 w1))
-           (> (+ x0 w0) x1)
-           (< y0 (+ y1 h1))
-           (> (+ y0 h0) y1)))))
+(defun make-metrics (glyph-data scale ttf)
+  (make-font-metrics :glyphs (mapcar (lambda (g) (getf g :metrics)) glyph-data)
+                     :ascender (* scale (zpb-ttf:ascender ttf))
+                     :descender (* scale (zpb-ttf:descender ttf))
+                     :line-gap (* scale (zpb-ttf:line-gap ttf))
+                     :kerning-table (make-kerning-table glyph-data scale ttf)))
 
 
-(defun splitsp (coord coord-from coord-to)
-  (> coord-to coord coord-from))
-
-(defun subdivide-rect (rect placed)
-  (if (intersectsp placed rect)
-      (with-rect (x y w h) rect
-        (with-rect (xp yp wp hp) placed
-          (let (result)
-            ;; left part
-            (when (splitsp xp x (+ x w))
-              (push (list x y (- xp x) h) result))
-            ;; right part
-            (when (splitsp (+ xp wp) x (+ x w))
-              (push (list (+ xp wp) y (- (+ x w) (+ xp wp)) h) result))
-            ;; bottom
-            (when (splitsp yp y (+ y h))
-              (push (list x y w (- yp y)) result))
-            ;; top
-            (when (splitsp (+ yp hp) y (+ y h))
-              (push (list x (+ yp hp) w (- (+ y h) (+ yp hp))) result))
-            result)))
-      (list rect)))
-
-(defun subdivide-intersecting (rect free-rects)
-  (loop for free-rect in free-rects appending (subdivide-rect free-rect rect)))
-
-(defun containsp (outer inner)
-  (with-rect (x0 y0 w0 h0) outer
-    (with-rect (x1 y1 w1 h1) inner
-      (and (>= (+ x0 w0) (+ x1 w1) x1 x0)
-           (>= (+ y0 h0) (+ y1 h1) y1 y0)))))
-
-(defun normalize-free-space (rects)
-  (loop with rest-filtered = rects
-     for (rect . rest) = rest-filtered until (null rect)
-     collecting
-       (loop with contained-p = nil
-          for other-rect in rest
-          unless (containsp rect other-rect) collect other-rect into filtered
-          when (and (not contained-p) (containsp other-rect rect))
-          do (setf contained-p t)
-          finally
-            (setf rest-filtered filtered)
-            (return (unless contained-p rect)))
-     into result
-     finally (return (delete-if #'null result))))
-
-(defun subrect (w h rect)
-  (with-rect (x y) rect
-    (list x y w h)))
-
-(defun place-rect (w h free-rects)
-  (let* ((free-rect (find-free-rect w h free-rects))
-         (result (subrect w h free-rect)))
-    (values result (normalize-free-space (subdivide-intersecting result
-                                                                 free-rects)))))
-
-(defun pack (dimensions &key width height)
-  (labels ((largest-side (el)
-             (max (second el) (third el)))
-           (shortest-side (el)
-             (min (second el) (third el)))
-           (short-side-last ()
-             (sort dimensions #'> :key #'shortest-side))
-           (double-sorted-dimensions ()
-             (stable-sort (short-side-last) #'> :key #'largest-side)))
-
-  (loop with free-rects = (list (list 0 0 width height))
-     for (id rect-width rect-height) in (double-sorted-dimensions)
-     collect
-       (multiple-value-bind (rect new-free-rects)
-           (place-rect rect-width rect-height free-rects)
-         (setf free-rects new-free-rects)
-         (with-rect (x y w h) rect
-           (list id x y w h))))))
+(defun obtain-glyph-data (string font-scale scale spread ttf)
+  (flet ((fscale (v)
+           (ceiling (* v font-scale))))
+    (loop for c across string
+       ;; possibly check zpb-ttf:glyph-exists-p
+       ;; instead of storing box or whatever
+       ;; missing chars get replaced with?
+       for g = (zpb-ttf:find-glyph c ttf)
+       collect (multiple-value-bind (sdf padding) (sdf ttf g font-scale scale spread)
+                 (list
+                  :glyph g
+                  :metrics (make-glyph-metrics
+                            :character c
+                            :origin (list (+ (ceiling (- (* font-scale (xmin g)))) padding)
+                                          (+ (ceiling (- (* font-scale (ymin g)))) padding))
+                            :advance-width (fscale (zpb-ttf:advance-width g))
+                            :left-side-bearing (fscale (zpb-ttf:left-side-bearing g))
+                            :right-side-bearing (fscale (zpb-ttf:right-side-bearing g)))
+                  :sdf sdf)))))
 
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-
-
-(defun stupid-packing (dimensions &key width height)
-  (loop with x = 0
-        with y = 0
-        with row-height = 0
-        for (id w h) in dimensions
-        when (> (+ x w) (or width 512))
-          do (setf x 0)
-             (incf y row-height)
-             (setf row-height 0)
-        do (setf row-height (max row-height h))
-        collect (list id x y w h)
-        do (incf x w)))
-
-(defun make-atlas (png-filename metrics-filename
-                   font-name pixel-size
+(defun make-atlas (font-name pixel-size
                    &key (scale 8) (spread 0.1)
                      (string *default-characters*)
                      width height)
   (zpb-ttf:with-font-loader (ttf font-name)
-    (let* ((glyphs (loop for c across string
-                         ;; possibly check zpb-ttf:glyph-exists-p
-                         ;; instead of storing box or whatever
-                         ;; missing chars get replaced with?
-                         collect (zpb-ttf:find-glyph c ttf)))
-           (font-height (- (zpb-ttf:ascender ttf)
+    (let* ((font-height (- (zpb-ttf:ascender ttf)
                            (zpb-ttf:descender ttf)))
-           (font-scale (/ pixel-size font-height)))
-
-      (list :asc (zpb-ttf:ascender ttf)
-            :desc (zpb-ttf:descender ttf)
-            :bounds (loop for g in glyphs
-                          collect (zpb-ttf:bounding-box g)))
-      #++
-      (format t "~%~%em = ~s = ~s ~s~%" (zpb-ttf:units/em ttf)
-              (float (* (zpb-ttf:units/em ttf) font-scale))
-              (float (* scale (zpb-ttf:units/em ttf) font-scale)))
-      (let* ((images
-               (loop for c across string
-                     for g = (zpb-ttf:find-glyph c ttf)
-                     for i from 0 ;;below 3
-                     for sdf = (sdf ttf g font-scale scale spread)
-                     collect (cons g sdf)
-                     #+do (aa-misc:save-image
-                           (format nil "/tmp/font/font~a.pnm" i) sdf :pnm)))
-             (pack (pack
-                    (loop for i in images
-                          collect (list i
-                                        (array-dimension (cdr i) 1)
-                                        (array-dimension (cdr i) 0)))
-                    :width width
-                    :height height))
-             (dims (loop for (nil x y w h) in pack
-                         maximize (+ x w) into width
-                         maximize (+ y h) into height
-                         finally (return (list width height)))))
+           (font-scale (/ pixel-size font-height))
+           (glyph-data (obtain-glyph-data string font-scale scale spread ttf))
+           (pack (pack (loop for g in glyph-data
+                          for sdf = (getf g :sdf)
+                          collect (list g (array-dimension sdf 1) (array-dimension sdf 0)))
+                       :width width
+                       :height height))
+           (dims (loop for (nil x y w h) in pack
+                    maximize (+ x w) into width
+                    maximize (+ y h) into height
+                    finally (return (list width height)))))
         (time
          (let* ((out (aa-misc:make-image (first dims) (second dims) #(0 0 0)))
                 (write (aa-misc:image-put-pixel out #(255 255 255))))
-           (loop for ((g . i) x y w h) in pack
-                 do (loop for ox from x
-                          for ix below w
-                          do (loop for oy from y
-                                   for iy below h
-                                   do (funcall write ox oy
-                                               (aref i (- h iy 1) ix 0)))))
-           (opticl:write-image-file png-filename out)))))))
+           (loop for (g x y w h) in pack
+              do (with-glyph-data (glyph metrics sdf padding) g
+                   (setf (glyph-bounding-box metrics) (list x y (+ x w) (+ y h)))
+                     (loop for ox from x
+                        for ix below w
+                        do (loop for oy from y
+                              for iy below h
+                              do (funcall write ox oy
+                                          (aref sdf (- h iy 1) ix 0))))))
+           (%make-atlas out (make-metrics glyph-data font-scale ttf)))))))
 
-#++
-(time
- (make-atlas "/tmp/atlas.png" "/tmp/font2.met"
-             "/windows/fonts/arial.ttf" 48
-             :scale 64
-             :spread 0.2
-             :string "ABCabc"))
-
-#++
-(time
- (make-atlas "/tmp/atlas.png" "/tmp/font2.met"
-             "/windows/fonts/arial.ttf" 48
-             :scale 32
-             :spread 0.1))
-
-#++
-(time
- (make-atlas "/tmp/atlas.png" "/tmp/font2.met"
-             "/Library/Fonts/Arial.ttf" 48
-             :scale 32
-             :spread 0.1
-             :width 300
-             :height 300))
+(defun save-atlas (atlas png-filename metrics-filename)
+  (declare (ignore metrics-filename))
+  (opticl:write-image-file png-filename (atlas-image atlas)))

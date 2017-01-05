@@ -6,4 +6,6 @@
   :depends-on (zpb-ttf cl-vectors cl-paths cl-aa cl-aa-misc cl-paths-ttf opticl)
   :serial t
   :components ((:file "packages")
+               (:file "binpack")
+               (:file "metrics")
                (:file "sdf")))
