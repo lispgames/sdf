@@ -11,12 +11,13 @@
   0.0)
 
 (defun make-point (p c1 c2)
-  (let* ((t1 (tangent-at-end c1 p))
-         (t2 (tangent-at-end c2 p))
-         (d (v2+ t1 t2))
-         (s (if (minusp (v2x (tangent-at-end c1 p)
-                             (tangent-at-end c2 p)))
-                -1 1))
+  (let* ((f (equalp p (p0 c1)))
+         (n1 (v2n (normal-at-end c1 p)))
+         (n2 (v2n (normal-at-end c2 p)))
+         (s (signum (if f
+                        (v2x n1 n2)
+                        (v2x n1 n2))))
+         (d (v2+ n1 n2))
          (l (v2mag d)))
     (unless (or (and (equalp p (p0 c1))) (equalp p (p2 c2))
                 (and (equalp p (p2 c1))) (equalp p (p0 c2)))
@@ -25,22 +26,39 @@
       (format t "~s: ~s ~s~%" p (p0 c2) (equalp p (p0 c2)))
       (format t "~s: ~s ~s~%" p (p2 c2) (equalp p (p2 c2)))
       (break "br,sd"))
-    (if (zerop l)
-        (if (equalp p (p0 c1))
-            (setf d (v2 (vy t1) (- (vx t1))))
-            (setf d (v2 (vy t2) (- (vx t2)))))
-        (setf d (v2scale
-                 d
-                 (* s (/ (if (equalp p (p0 c1))
-                             (- l)
-                             l))))))
+    #++
+    (format t "eql:~s ~s ~s~% d ~s~% n1 ~s~% n2 ~s~% c1: ~s ~s~% ~s~% c2: ~s ~s~% ~s~% ~s ~s~%"
+            (equal p (p0 c1)) s p d
+            n1 n2
+            (p0 c1) (p2 c1)
+            (if (typep c1 'quadratic) (p1 c1))
+            (p0 c2) (p2 c2)
+            (if (typep c2 'quadratic) (p1 c2))
+            (type-of c1) (type-of c2))
+    (cond
+      ((zerop s)
+       (if f
+           (setf d (v2scale n1 1))
+           (setf d (v2scale n2 1))))
+      ((and (not (zerop s))
+            (not (zerop l)))
+       (setf d (v2n d)))
+
+      (t (break "scvabj")))
+    #++
+    (format t " => ~s~%" d)
+    #++
+    (format t "eql:~s ~s~% ~s~% ~s~%"  (equal p (p0 c1)) d t1 t2)
+
     (make-instance 'point
                    :p0 p
                    :d d)))
 
 (defmethod sign-at ((p point) at n)
-  (if (minusp at)
-      -1 1))
+  (if (zerop at)
+      1
+      (if (minusp at)
+          -1 1)))
 
 (defclass line ()
   ((p0 :accessor p0 :initarg :p0)
@@ -48,25 +66,28 @@
    (d :accessor d :initarg :d)
    (l :accessor l :initarg :l)
    (c :accessor c :initarg :c)
-   (r :accessor r :initarg :r)))
+   (r :accessor r :initarg :r)
+   (n :accessor n :initarg :n)))
 
 (defmethod eval-at ((line line) at)
   (v2+ (p0 line) (v2scale (d line) at)))
 
-(defmethod tangent-at-end ((line line) at)
-  (cond
-    ((equalp at (p0 line))
-     (d line))
-    ((equalp at (p2 line))
-     (v2- (p0 line) (p2 line)))
-    (t
-     (error "not endpoint"))))
+(defmethod normal-at-end ((line line) at)
+  (n line)
+  #++(cond
+       ((equalp at (p0 line))
+        (d line))
+       ((equalp at (p2 line))
+        (v2- (p0 line) (p2 line)))
+       (t
+        (error "not endpoint"))))
 
 (defun make-line (p0 p2)
   (let ((d (v2- p2 p0))
         (c (v2scale (v2+ p0 p2) 0.5)))
     (make-instance 'line :p0 p0 :p2 p2 :d d :l (v2. d d)
-                         :c c :r (v2dist p0 c))))
+                         :c c :r (v2dist p0 c)
+                         :n (v2n (v2scale (v2tx d) -1)))))
 
 (defclass quadratic ()
   ((p0 :accessor p0 :initarg :p0)
@@ -104,12 +125,12 @@
             (v2scale (d1 q) (* 2 at)))
        (p0 q)))
 
-(defmethod tangent-at-end ((q quadratic) at)
+(defmethod normal-at-end ((q quadratic) at)
   (cond
     ((equalp at (p0 q))
-     (d1 q))
+     (v2n(v2tx(v2- (p0 q) (p1 q)))))
     ((equalp at (p2 q))
-     (v2- (p1 q) (p2 q)))
+     (v2n(v2tx(v2- (p1 q) (p2 q)))))
     (t
      (error "not endpoint"))))
 
@@ -153,13 +174,6 @@
                  (* -27 ad ad)))
          (det0 (+ (expt b 2)
                   (* -3 a c))))
-;;;(format t "bc ~s~%" bc)
-;;;(format t "ad ~s~%" ad)
-;;;(format t "abc ~s~%" abc)
-;;;(format t "abcd ~s~%" abcd)
-;;;(format t "b3 ~s~%" b3)
-;;;(format t "det ~s~%" det)
-;;;(format t "det0 ~s~%" det0)
     (cond
       ((and (zerop det) (zerop det0))
        (list (/ b (* -3 a))))
@@ -183,7 +197,7 @@
                           (+ b
                              (* (expt xi k) cc)
                              (/ det0 (* (expt xi k) cc))))
-               when (and (< (abs (imagpart r)) 0.1)
+               when (and (< (abs (imagpart r)) 0.001)
                          (< 0 (realpart r) 1))
                  collect (realpart r)))))))
 
@@ -207,6 +221,7 @@
 
 (defun dist/point (p s)
   (let ((tt (v2. (v2- p (p0 s)) (d s))))
+    (assert (< 0.9 (v2mag (d s)) 1.1))
     (* (sign-at s tt 0)
        (v2dist p (p0 s)))))
 
@@ -217,18 +232,18 @@
     (line (dist/line p s))))
 
 (defun cull (s p max)
-  (unless (typep s 'point)
-    (let ((c (> (- (v2dist (c s) p) (r s))
-                (abs max))))
-      ;; cull to control points in addition to bounding circle
-      #++ ;; seems counterproductive currently, try again when optimizing
-      (when (and (typep s 'quadratic) (not c))
-        (setf c
-              (and (not (minusp (v2. p (d1 s))))
-                   ;; fixme: precalc these v2-
-                   (not (minusp (v2. p (v2- (p2 s) (p1 s)))))
-                   (not (minusp (v2. p (v2- (p0 s) (p2 s))))))))
-      c)))
+  #++(unless (typep s 'point)
+       (let ((c (> (- (v2dist (c s) p) (r s))
+                   (abs max))))
+         ;; cull to control points in addition to bounding circle
+         #++ ;; seems counterproductive currently, try again when optimizing
+         (when (and (typep s 'quadratic) (not c))
+           (setf c
+                 (and (not (minusp (v2. p (d1 s))))
+                      ;; fixme: precalc these v2-
+                      (not (minusp (v2. p (v2- (p2 s) (p1 s)))))
+                      (not (minusp (v2. p (v2- (p0 s) (p2 s))))))))
+         c)))
 
 (defclass shape ()
   ((points :reader points :initarg :points)
@@ -277,12 +292,15 @@
 (defun translate-glyph (glyph scale)
   (let ((points (make-hash-table :test 'equalp))
         (lines)
-        (curves))
+        (curves)
+        (first))
     (zpb-ttf:do-contours (c glyph)
       (zpb-ttf:do-contour-segments (p0 p1 p2) c
         (let ((p0 (scale-point p0 scale))
               (p1 (scale-point p1 scale))
               (p2 (scale-point p2 scale)))
+          (unless first
+            (setf first p0))
           (let ((s (if p1
                        (make-quadratic p0 p1 p2)
                        (make-line p0 p2))))
@@ -291,21 +309,30 @@
                 (push s lines))
             (push s (gethash p0 points))
             (push s (gethash p2 points))))))
+    #++(setf (gethash first points)
+             (reverse (gethash first points)))
     (make-instance 'shape
                    :points
-                   (loop for k being the hash-key of points using (hash-value v)
+                   (loop for i from 0
+                         for k being the hash-key of points using (hash-value v)
                          do (assert (= (length v) 2))
-                         collect (apply 'make-point k (reverse v)))
+                            ;;when (<= 25 i 29)
+                         collect (apply 'make-point k  v))
                    :lines lines
                    :curves curves)))
 
 (defvar *f*)
-(defun sdf (font glyph scale spread)
-  (let* ((gw (- (xmax glyph) (xmin glyph)))
+(defun sdf (font glyph em-width spread)
+  (let* ((scale (float (/ em-width (units/em font))))
+         (gw (- (xmax glyph) (xmin glyph)))
          (gh (- (ymax glyph) (ymin glyph)))
-         (padding (ceiling (* 1/2 spread scale (units/em font))))
-         (dw (+ (* 2 padding) (ceiling (* scale gw))))
-         (dh (+ (* 2 padding) (ceiling (* scale gh)))))
+         (padding spread)
+         (aspect (/ gh gw))
+         (dw (+ 2 (* 2 padding) (ceiling (* gw scale))))
+         (dh (+ 2 (* 2 padding) (ceiling (* gh scale)))))
+    (format t "~sx~s - ~s @ ~s~%" dw dh padding (float aspect))
+    (format t "~sx~s @ ~s~%" gw gh (units/em font))
+    (format t "scale = ~s~%" scale)
     (let* ((segments nil))
       (setf segments (translate-glyph glyph scale))
       (setf *f* segments)
@@ -314,36 +341,40 @@
         (declare (ignorable write))
         (loop for y below (array-dimension dest 0)
               do (loop for x below (array-dimension dest 1)
-                       for fx = (- x (- (/ (- dw (* scale gw)) 2)
+                       for fx = (- x (- (/ (- dw (* scale gw) 1)
+                                           2)
                                         (* (xmin glyph) scale)))
-                       for fy = (- y (- (/ (- dh (* scale gh)) 2)
-                                        (* (ymin glyph) scale)))
+                       for fy =  (- y (- (/ (- dh (* scale gh) 1)
+                                            2)
+                                         (* (ymin glyph) scale)))
                        for d = (dist/c (v2 fx fy) segments)
-                       do (funcall write x (- dh y)
-                                   (max 0 (+ 128 (* 128 (/ d 12)))))
+                       for dy = (- dh y 1)
+                       do (funcall write x dy
+                                   (max 0 (+ 128 (* 128 (/ d spread)))))
                        #++
-                        (let ((ex 467) (ey 483))
+                        (let ((ex 60) (ey 112))
                           (when (and (<= (1- ex) x (1+ ex))
-                                     (<= (1- ey) (- dh y 1) (1+ ey)))
-                            (format t "~s ~s: ~s ~s ~s~%" x y d fx fy)
+                                     (<= (1- ey) dy (1+ ey)))
+                            (format t "~s ~s: ~s ~s ~s~%" x dy d fx fy)
                             #++(when (and (= x ex) (= (- dh y 1) ey))
                                  (setf d (list 999 999 999)))))
-                       #++
+
                         (progn
-                          (when (< (car d) 1000)
-                            (setf (aref dest (- dh y 1) x 0)
-                                  (min 255 (max 0 (round (+ 128 (* 128 (/ (car d) 12))))))))
                           #++
-                          (when (< (second d) 1000)
-                            (setf (aref dest (- dh y 1) x 1)
-                                  (min 255 (max 0 (round (+ 128 (* 128 (/ (second d) 12))))))))
+                          (when (< (abs (car d)) 30)
+                            (setf (aref dest dy x 0)
+                                  (min 255 (max 0 (round (+ 128 (* 128 (/ (car d) spread))))))))
                           #++
-                          (when (< (third d) 1000)
-                            (setf (aref dest (- dh y 1) x 2)
-                                  (min 255
-                                       (max 0 (round (+ 128 (* 128 (/ (third d) 12)))))))))
+                          (when (< (abs (second d)) 30)
+                            (setf (aref dest dy x 1)
+                                  (min 255 (max 0 (round (+ 128 (* 128 (/ (second d) spread))))))))
+
+                          #++  (when (< (abs (third d)) 30)
+                                 (setf (aref dest dy x 2)
+                                       (min 255
+                                            (max 0 (round (+ 128 (* 128 (/ (third d) spread)))))))))
                        #++
-                        (funcall write x (- dh y 1)
+                        (funcall write x dy
                                  (max 0 (+ 128 (* 128
                                                   (/ (reduce
                                                       (lambda (a b)
@@ -351,7 +382,7 @@
                                                                (abs b))
                                                             a b))
                                                       d)
-                                                     12)))))))
+                                                     spread)))))))
         (aa-misc:save-image "/tmp/font2a.pnm" dest :pnm)
         #++(aa-misc:save-image "/tmp/font2h.pnm" image :pnm)
         (values dest padding)))))
@@ -363,8 +394,11 @@
 #++
 (zpb-ttf:with-font-loader (ttf "georgia.ttf")
   (let ((g (zpb-ttf:find-glyph
-            (char "WA*SOX" 5)
-            ;;(alexandria:random-elt *default-characters*)
+            (print (char "kSWA*OXI5" 0))
+            ;;(print (alexandria:random-elt *default-characters*))
             ttf)))
-    (time (sdf ttf g 0.119108185 #++(print (+ 0.01 (random 0.3))) 0.6))
+    (time (sdf ttf g
+               64 4
+               ;(print (+ 10 (random 564))) (print (+ 3 (random 10)))
+               ))
     nil))

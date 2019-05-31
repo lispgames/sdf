@@ -44,3 +44,13 @@
   (declare (type v2 v))
   (v2 (* f (vx v)) (* f (vy v))))
 
+
+(defun v2n (v)
+  (declare (type v2 v))
+  (let ((l (v2mag v)))
+    (assert (not (zerop l)))
+    (v2scale v (/ l))))
+
+(defun v2tx (v)
+  (declare (type v2 v))
+  (v2 (- (vy v)) (vx v)))
