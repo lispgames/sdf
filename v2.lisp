@@ -3,12 +3,12 @@
 (declaim (notinline v2 vx vy))
 (defun vx (v) (aref v 0))
 (defun vy (v) (aref v 1))
-(deftype v2 () '(simple-array single-float (2)))
+(deftype v2 () '(simple-array double-float (2)))
 
 (defun v2 (x y)
-  (make-array 2 :element-type 'single-float
-                :initial-contents (list (coerce x 'single-float)
-                                        (coerce y 'single-float))))
+  (make-array 2 :element-type 'double-float
+                :initial-contents (list (coerce x 'double-float)
+                                        (coerce y 'double-float))))
 
 (defun v2- (a b)
   (declare (type v2 a b))
