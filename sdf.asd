@@ -8,4 +8,7 @@
   :components ((:file "packages")
                (:file "binpack")
                (:file "metrics")
+               (:file "v2")
+               (:file "sdf-direct")
+               (:file "sdf-ms")
                (:file "sdf")))
