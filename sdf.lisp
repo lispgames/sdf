@@ -33,6 +33,7 @@
                      :line-gap (* scale (zpb-ttf:line-gap ttf))
                      :kerning-table (make-kerning-table glyph-data scale ttf)))
 
+(defvar *backend* :direct)
 
 (defun obtain-glyph-data (string font-scale scale spread ttf)
   (flet ((fscale (v)
@@ -42,7 +43,12 @@
        ;; instead of storing box or whatever
        ;; missing chars get replaced with?
        for g = (zpb-ttf:find-glyph c ttf)
-       collect (multiple-value-bind (sdf padding) (sdf ttf g font-scale scale spread)
+       collect (multiple-value-bind (sdf padding)
+                   (ecase *backend*
+                     (:direct
+                      (sdf ttf g font-scale scale spread))
+                     (:ms
+                      (sdf/ms ttf g font-scale scale spread)))
                  (list
                   :glyph g
                   :metrics (make-glyph-metrics
@@ -58,7 +64,8 @@
 (defun make-atlas (font-name pixel-size
                    &key (scale 8) (spread 0.1)
                      (string *default-characters*)
-                     width height)
+                     width height
+                     ((:backend *backend*) :direct))
   (zpb-ttf:with-font-loader (ttf font-name)
     (let* ((font-height (- (zpb-ttf:ascender ttf)
                            (zpb-ttf:descender ttf)))

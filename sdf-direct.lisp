@@ -322,21 +322,27 @@
                    :curves curves)))
 
 (defvar *f*)
-(defun sdf (font glyph em-width spread)
-  (let* ((scale (float (/ em-width (units/em font))))
+(defun sdf (font glyph font-scale ms-scale spread)
+  (declare (ignore ms-scale font))
+  (let* ((scale font-scale)
+         (spread (/ spread))
          (gw (- (xmax glyph) (xmin glyph)))
          (gh (- (ymax glyph) (ymin glyph)))
          (padding spread)
-         (aspect (/ gh gw))
-         (dw (+ 2 (* 2 padding) (ceiling (* gw scale))))
-         (dh (+ 2 (* 2 padding) (ceiling (* gh scale)))))
-    (format t "~sx~s - ~s @ ~s~%" dw dh padding (float aspect))
-    (format t "~sx~s @ ~s~%" gw gh (units/em font))
-    (format t "scale = ~s~%" scale)
+         ;(aspect (/ gh gw))
+         (dw (ceiling (+ 2 (* 2 padding) (* gw scale))))
+         (dh (ceiling (+ 2 (* 2 padding) (* gh scale)))))
+    ;(format t "~sx~s - ~s @ ~s~%" dw dh padding (float aspect))
+    ;(format t "~sx~s @ ~s~%" gw gh (units/em font))
+    ;(format t "scale = ~s~%" scale)
+    (format t "~s / ~s ~sx~s~%" (zpb-ttf:postscript-name glyph)
+            (zpb-ttf:code-point glyph) dw dh)
+    (when (or (zerop gw) (zerop gh))
+      (return-from sdf (values (aa-misc:make-image 4 4 #(0 0 0)) 2)))
     (let* ((segments nil))
       (setf segments (translate-glyph glyph scale))
       (setf *f* segments)
-      (let* ((dest (aa-misc:make-image dw dh #(0 0 0)))
+      (let* ((dest (aa-misc:make-image (ceiling dw) (ceiling dh) #(0 0 0)))
              (write (aa-misc:image-put-pixel dest #(255 255 255))))
         (declare (ignorable write))
         (loop for y below (array-dimension dest 0)
@@ -348,7 +354,7 @@
                                             2)
                                          (* (ymin glyph) scale)))
                        for d = (dist/c (v2 fx fy) segments)
-                       for dy = (- dh y 1)
+                       for dy = y
                        do (funcall write x dy
                                    (max 0 (+ 128 (* 128 (/ d spread)))))
                        #++
@@ -396,9 +402,22 @@
   (let ((g (zpb-ttf:find-glyph
             (print (char "kSWA*OXI5" 0))
             ;;(print (alexandria:random-elt *default-characters*))
-            ttf)))
+            ttf))
+        (scale (print (float (/ 64  (- (zpb-ttf:ascender ttf)
+                                       (zpb-ttf:descender ttf)))))))
     (time (sdf ttf g
-               64 4
-               ;(print (+ 10 (random 564))) (print (+ 3 (random 10)))
+              scale nil (/ 8)
+              ;;(print (+ 10 (random 564))) (/ (print (+ 3 (random 10))))
                ))
     nil))
+#++
+(time
+ (let ((a (time (make-atlas "georgia.ttf" 64 :spread 0.1
+                            :width 512 :height 512))))
+   (time (save-atlas a "/tmp/sdf3.png" "sdf1.met"))))
+#++
+(time
+ (let ((a (time (make-atlas "georgia.ttf" 62 :spread 0.4
+                            :width 512 :height 512
+                            :backend :ms))))
+   (time (save-atlas a "/tmp/sdf4.png" "sdf1.met"))))
