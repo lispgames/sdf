@@ -11,4 +11,6 @@
                (:file "v2")
                (:file "sdf-direct")
                (:file "sdf-ms")
+               (:file "msdf")
                (:file "sdf")))
+

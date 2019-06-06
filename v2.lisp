@@ -1,6 +1,7 @@
 (in-package #:sdf)
 
-(declaim (notinline v2 vx vy))
+(declaim (inline v2 vx vy
+                    v2- v2+ v2h* v2. v2x v2dist v2scale v2mag v2n v2rx))
 (defun vx (v) (aref v 0))
 (defun vy (v) (aref v 1))
 (deftype v2 () '(simple-array double-float (2)))
@@ -29,16 +30,23 @@
 
 (defun v2. (a b)
   (declare (type v2 a b))
-  (reduce '+ (v2h* a b)))
+  (+ (* (vx a) (vx b))
+     (* (vy a) (vy b))))
 
 (defun v2dist (a b)
   (declare (type v2 a b))
-  (let ((d (v2- a b)))
-    (sqrt (v2. d d))))
+  (let* ((d (v2- a b))
+         (l (v2. d d)))
+    (if (minusp l)
+        (error "complex length?")
+        (sqrt l))))
 
 (defun v2mag (v)
   (declare (type v2 v))
-  (sqrt (v2. v v)))
+  (let ((l (v2. v v)))
+    (if (minusp l)
+        (error "complex mag?")
+        (sqrt l))))
 
 (defun v2scale (v f)
   (declare (type v2 v))
@@ -51,6 +59,6 @@
     (assert (not (zerop l)))
     (v2scale v (/ l))))
 
-(defun v2tx (v)
+(defun v2rx (v)
   (declare (type v2 v))
   (v2 (- (vy v)) (vx v)))
