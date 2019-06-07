@@ -12,7 +12,7 @@ characters about `pixel-size` pixels tall.
 
 ### more options:
 
-`make-atlas font-name pixel-size &key scale spread string width height mode auto-size-granularity-x auto-size-granularity-y optimize-pack trim`
+__make-atlas__ *font-name pixel-size* &key *scale spread string width height mode auto-size-granularity-x auto-size-granularity-y optimize-pack trim*
 
 * `font-name` : name of a font file, passed to zpb-ttf
 
