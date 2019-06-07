@@ -316,9 +316,26 @@
 
     ret))
 
-(defun pseudo-distance (p s d pdist)
+(defun pseudo-distance/p1 (p s)
+  ;; for single channel sdf, always look at both
+  (let ((d1 (dist/line* p (p-p0 s) (v2scale (p-t1 s) 1)))
+        (d2 (dist/line* p (p-p0 s) (v2scale (p-t2 s) 1)))
+        (d nil))
+    (setf d
+          (if (eql *backend* :psdf)
+              (if (> (abs d1) (abs d2))
+                  d1 d2)
+              (let ((dx (v2dist p (p-p0 s))))
+                (* dx (signum
+                       (if (> (abs d1) (abs d2))
+                           d1 d2))))))
+    (vector d d d)))
+
+(defun pseudo-distance (p s d multichannel)
   (if (typep s 'point)
-      (pseudo-distance/p p s)
+      (if multichannel
+          (pseudo-distance/p p s)
+          (pseudo-distance/p1 p s))
       (coerce (loop for c across (s-channels s)
                     collect (if c d nil))
               'vector)))
@@ -395,7 +412,6 @@
 (defun sdf (font glyph font-scale ms-scale spread)
   (declare (ignore ms-scale font))
   (let* ((scale font-scale)
-         (spread (/ spread))
          (gw (- (xmax glyph) (xmin glyph)))
          (gh (- (ymax glyph) (ymin glyph)))
          (padding spread)
@@ -420,7 +436,7 @@
                                             2)
                                          (* (ymin glyph) scale)))
                        for d = (dist/s (v2 fx fy) segments nil)
-                       for dy = y
+                       for dy = (- dh 1 y)
                        do (funcall write x dy
                                    (max 0 (+ 128 (* 128
                                                     (/ (first d) spread)))))))
@@ -433,14 +449,15 @@
 
 #++
 (zpb-ttf:with-font-loader (ttf "georgia.ttf")
-  (let ((g (zpb-ttf:find-glyph
-            (print (char "@|kSWA*OXI5" 3))
+  (let ((*backend* :direct)
+        (g (zpb-ttf:find-glyph
+            (print (char "@|kSWA*OXI5" 0))
             ;;(print (alexandria:random-elt *default-characters*))
-            ttf)) 
+            ttf))
         (scale (print (float (/ 64 (- (zpb-ttf:ascender ttf)
                                       (zpb-ttf:descender ttf)))))))
     (time (msdf ttf g
-               scale 16 0.2
+               scale 64 3
                ;;(print (+ 10 (random 564))) (/ (print (+ 3 (random 10))))
                ))
     nil))

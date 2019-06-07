@@ -25,7 +25,6 @@
 (defun msdf (font glyph font-scale ms-scale spread)
   (declare (ignore ms-scale font))
   (let* ((scale font-scale)
-         (spread (/ spread))
          (gw (- (xmax glyph) (xmin glyph)))
          (gh (- (ymax glyph) (ymin glyph)))
          (padding (+ 0 spread))
@@ -52,8 +51,8 @@
                        for fy =  (- y (- (/ (- dh (* scale gh) 1 ry)
                                             2)
                                          (* (ymin glyph) scale)))
-                       for (r g b) = (dist/s (v2 fx fy) segments nil)
-                       for dy = y
+                       for (r g b) = (dist/s (v2 fx fy) segments t)
+                       for dy = (- dh 1 y)
                        do (if (< (abs r) 100000)
                               (setf (aref dest dy x 0)
                                     (min 255

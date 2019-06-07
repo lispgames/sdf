@@ -45,10 +45,12 @@
        for g = (zpb-ttf:find-glyph c ttf)
        collect (multiple-value-bind (sdf padding)
                    (ecase *backend*
-                     (:direct
+                     ((:direct :psdf)
                       (sdf ttf g font-scale scale spread))
                      (:ms
-                      (sdf/ms ttf g font-scale scale spread)))
+                      (sdf/ms ttf g font-scale scale spread))
+                     (:msdf
+                      (msdf ttf g font-scale scale spread)))
                  (list
                   :glyph g
                   :metrics (make-glyph-metrics
@@ -82,8 +84,7 @@
                     finally (return (list width height)))))
         (time
          (let* ((out (aa-misc:make-image width;(first dims)
-                                         (second dims) #(0 0 0)))
-                (write (aa-misc:image-put-pixel out #(255 255 255))))
+                                         (second dims) #(0 0 0))))
            (loop for (g x y w h) in pack
               do (with-glyph-data (glyph metrics sdf padding) g
                    (setf (glyph-bounding-box metrics) (list x y (+ x w) (+ y h)))
@@ -91,8 +92,9 @@
                         for ix below w
                         do (loop for oy from y
                               for iy below h
-                              do (funcall write ox oy
-                                          (aref sdf (- h iy 1) ix 0))))))
+                                 do (loop for i below 3
+                                          do (setf (aref out oy ox i)
+                                                   (aref sdf iy ix i)))))))
            (%make-atlas out (make-metrics glyph-data font-scale ttf)))))))
 
 (defun save-atlas (atlas png-filename metrics-filename)
