@@ -73,11 +73,12 @@
                            (zpb-ttf:descender ttf)))
            (font-scale (/ pixel-size font-height))
            (glyph-data (obtain-glyph-data string font-scale scale spread ttf))
-           (pack (pack (loop for g in glyph-data
-                          for sdf = (getf g :sdf)
-                          collect (list g (array-dimension sdf 1) (array-dimension sdf 0)))
-                       :width width
-                       :height height))
+           (pack (binpack:pack
+                  (loop for g in glyph-data
+                        for sdf = (getf g :sdf)
+                        collect (list g (array-dimension sdf 1) (array-dimension sdf 0)))
+                  :width width
+                  :height height))
            (dims (loop for (nil x y w h) in pack
                     maximize (+ x w) into width
                     maximize (+ y h) into height

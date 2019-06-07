@@ -3,10 +3,10 @@
   :version "0.0.1"
   :author "Bart Botta <00003b at gmail.com>, Pavel Korolev <dev@borodust.org>"
   :license "MIT"
-  :depends-on (zpb-ttf cl-vectors cl-paths cl-aa cl-aa-misc cl-paths-ttf opticl)
+  :depends-on (zpb-ttf cl-vectors cl-paths cl-aa cl-aa-misc cl-paths-ttf opticl
+                       binpack)
   :serial t
   :components ((:file "packages")
-               (:file "binpack")
                (:file "metrics")
                (:file "v2")
                (:file "sdf-direct")
