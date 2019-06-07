@@ -62,41 +62,63 @@
                             :right-side-bearing (fscale (zpb-ttf:right-side-bearing g)))
                   :sdf sdf)))))
 
-
 (defun make-atlas (font-name pixel-size
                    &key (scale 8) (spread 0.1)
                      (string *default-characters*)
-                     width height
-                     ((:backend *backend*) :direct))
+                     (width :auto) (height :auto)
+                     ((:backend *backend*) :direct)
+                     (auto-size-granularity-x 1)
+                     (auto-size-granularity-y 1)
+                     (optimize-pack nil)
+                     (trim nil))
   (zpb-ttf:with-font-loader (ttf font-name)
     (let* ((font-height (- (zpb-ttf:ascender ttf)
                            (zpb-ttf:descender ttf)))
            (font-scale (/ pixel-size font-height))
            (glyph-data (obtain-glyph-data string font-scale scale spread ttf))
-           (pack (binpack:pack
+           (pack (binpack:auto-pack
                   (loop for g in glyph-data
                         for sdf = (getf g :sdf)
-                        collect (list g (array-dimension sdf 1) (array-dimension sdf 0)))
-                  :width width
-                  :height height))
+                        collect (list g (array-dimension sdf 1)
+                                      (array-dimension sdf 0)))
+                  :width width :height height
+                  :auto-size-granularity-x auto-size-granularity-x
+                  :auto-size-granularity-y auto-size-granularity-y
+                  :optimize-pack optimize-pack))
            (dims (loop for (nil x y w h) in pack
-                    maximize (+ x w) into width
-                    maximize (+ y h) into height
-                    finally (return (list width height)))))
-        (time
-         (let* ((out (aa-misc:make-image width;(first dims)
-                                         (second dims) #(0 0 0))))
-           (loop for (g x y w h) in pack
-              do (with-glyph-data (glyph metrics sdf padding) g
-                   (setf (glyph-bounding-box metrics) (list x y (+ x w) (+ y h)))
-                     (loop for ox from x
-                        for ix below w
-                        do (loop for oy from y
-                              for iy below h
-                                 do (loop for i below 3
-                                          do (setf (aref out oy ox i)
-                                                   (aref sdf iy ix i)))))))
-           (%make-atlas out (make-metrics glyph-data font-scale ttf)))))))
+                       maximize (+ x w) into width
+                       maximize (+ y h) into height
+                       finally (return (list width height)))))
+      (when (eql width :auto)
+        (setf width
+              (* auto-size-granularity-x
+                 (ceiling (first dims) auto-size-granularity-x))))
+      (when (eql height :auto)
+        (setf height
+              (* auto-size-granularity-y
+                 (ceiling (second dims) auto-size-granularity-y))))
+      (when trim
+        (setf height (second dims))
+        (unless (eql trim :y-only)
+          (setf width (first dims))))
+      (time
+       (let* ((out (aa-misc:make-image width  ;(first dims)
+                                       height ;(second dims)
+                                       #(0 0 0))))
+         (loop for (g x y w h) in pack
+               do (with-glyph-data (glyph metrics sdf padding) g
+                    (setf (glyph-bounding-box metrics)
+                          (list x y (+ x w) (+ y h)))
+                    (loop for ox from x
+                          for ix below w
+                          do (loop for oy from y
+                                   for iy below h
+                                   do (loop for i below 3
+                                            do (setf (aref out oy ox i)
+                                                     (aref sdf iy ix i)))
+                                      (setf (aref out oy ox 0)
+                                            255)))))
+         (%make-atlas out (make-metrics glyph-data font-scale ttf)))))))
 
 (defun save-atlas (atlas png-filename metrics-filename)
   (declare (ignore metrics-filename))
