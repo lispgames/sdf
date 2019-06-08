@@ -114,9 +114,7 @@
                                      for iy below h
                                      do (loop for i below 3
                                               do (setf (aref out oy ox i)
-                                                       (aref sdf iy ix i)))
-                                     (setf (aref out oy ox 0)
-                                           255))))))
+                                                       (aref sdf iy ix i))))))))
          (%make-atlas out (make-metrics glyph-data font-scale ttf)))))))
 
 (defun save-atlas (atlas png-filename metrics-filename)
