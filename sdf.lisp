@@ -76,15 +76,15 @@
            (glyph-data (obtain-glyph-data string font-scale scale spread ttf))
            (%pack (multiple-value-list
                    (binpack:auto-pack
-                           (loop for g in glyph-data
-                                 for sdf = (getf g :sdf)
-                                 collect (binpack:rect g 0 0
-                                                       (array-dimension sdf 1)
-                                                       (array-dimension sdf 0)))
-                           :width width :height height
-                           :auto-size-granularity-x auto-size-granularity-x
-                           :auto-size-granularity-y auto-size-granularity-y
-                           :optimize-pack optimize-pack)))
+                    (loop for g in glyph-data
+                          for sdf = (getf g :sdf)
+                          collect (binpack:rect g 0 0
+                                                (array-dimension sdf 1)
+                                                (array-dimension sdf 0)))
+                    :width width :height height
+                    :auto-size-granularity-x auto-size-granularity-x
+                    :auto-size-granularity-y auto-size-granularity-y
+                    :optimize-pack optimize-pack)))
            (pack (car %pack))
            (dims (cdr %pack)))
       (when (or (eql width :auto) optimize-pack)
