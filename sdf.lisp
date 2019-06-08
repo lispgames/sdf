@@ -74,24 +74,24 @@
                            (zpb-ttf:descender ttf)))
            (font-scale (/ pixel-size font-height))
            (glyph-data (obtain-glyph-data string font-scale scale spread ttf))
-           (pack (binpack:auto-pack
-                  (loop for g in glyph-data
-                        for sdf = (getf g :sdf)
-                        collect (list g (array-dimension sdf 1)
-                                      (array-dimension sdf 0)))
-                  :width width :height height
-                  :auto-size-granularity-x auto-size-granularity-x
-                  :auto-size-granularity-y auto-size-granularity-y
-                  :optimize-pack optimize-pack))
-           (dims (loop for (nil x y w h) in pack
-                       maximize (+ x w) into width
-                       maximize (+ y h) into height
-                       finally (return (list width height)))))
-      (when (eql width :auto)
+           (%pack (multiple-value-list
+                   (binpack:auto-pack
+                           (loop for g in glyph-data
+                                 for sdf = (getf g :sdf)
+                                 collect (binpack:rect g 0 0
+                                                       (array-dimension sdf 1)
+                                                       (array-dimension sdf 0)))
+                           :width width :height height
+                           :auto-size-granularity-x auto-size-granularity-x
+                           :auto-size-granularity-y auto-size-granularity-y
+                           :optimize-pack optimize-pack)))
+           (pack (car %pack))
+           (dims (cdr %pack)))
+      (when (or (eql width :auto) optimize-pack)
         (setf width
               (* auto-size-granularity-x
                  (ceiling (first dims) auto-size-granularity-x))))
-      (when (eql height :auto)
+      (when (or (eql height :auto) optimize-pack)
         (setf height
               (* auto-size-granularity-y
                  (ceiling (second dims) auto-size-granularity-y))))
@@ -103,17 +103,20 @@
        (let* ((out (aa-misc:make-image width  ;(first dims)
                                        height ;(second dims)
                                        #(0 0 0))))
-         (loop for (g x y w h) in pack
-               do (with-glyph-data (glyph metrics sdf padding) g
-                    (setf (glyph-bounding-box metrics)
-                          (list x y (+ x w) (+ y h)))
-                    (loop for ox from x
-                          for ix below w
-                          do (loop for oy from y
-                                   for iy below h
-                                   do (loop for i below 3
-                                            do (setf (aref out oy ox i)
-                                                     (aref sdf iy ix i)))))))
+         (loop for rect in pack
+               do (binpack:with-rect (g x y w h) rect
+                    (with-glyph-data (glyph metrics sdf padding) g
+                      (setf (glyph-bounding-box metrics)
+                            (list x y (+ x w) (+ y h)))
+                      (loop for ox from x
+                            for ix below w
+                            do (loop for oy from y
+                                     for iy below h
+                                     do (loop for i below 3
+                                              do (setf (aref out oy ox i)
+                                                       (aref sdf iy ix i)))
+                                     (setf (aref out oy ox 0)
+                                           255))))))
          (%make-atlas out (make-metrics glyph-data font-scale ttf)))))))
 
 (defun save-atlas (atlas png-filename metrics-filename)
