@@ -2,6 +2,8 @@
 #++
 (require 'sdf)
 
+(defvar *backend* :sdf)
+
 (declaim (inline s-p0 s-p2 s-t1 s-t2 s-channels s-start s-c s-r))
 (defstruct (segment (:conc-name s-))
   (p0 (v2 0 0) :type v2)

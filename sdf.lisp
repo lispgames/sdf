@@ -33,8 +33,6 @@
                      :line-gap (* scale (zpb-ttf:line-gap ttf))
                      :kerning-table (make-kerning-table glyph-data scale ttf)))
 
-(defvar *backend* :sdf)
-
 (defun obtain-glyph-data (string font-scale scale spread ttf)
   (flet ((fscale (v)
            (ceiling (* v font-scale))))
