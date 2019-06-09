@@ -24,18 +24,27 @@ __make-atlas__ *font-name pixel-size* &key *scale spread string width height mod
 
 * `string` : default `*default-characters*`, vector of characters to include in atlas
 
-* `width`, `height` : default `:auto`. Size of texture to generate. If `:auto`, will guess a reasonable size and expand to fit. Due to incremental resizing, packing returned by `:auto` might not be same as returned by same sizes passed directlly.
+* `width`, `height` : default `:auto`. Size of texture to generate. If `:auto`, will guess a reasonable size and expand to fit. Due to incremental resizing, packing returned by `:auto` might not be same as returned by same sizes passed directly.
 
 * `mode` : default `:sdf`. One of the following options:
 
     * `:sdf` : calculate a single channel sdf directly from vector data in font
-    * `:sdf-ms` : render a bitmap from font, scaled up by `scale`, and calculate single-channnel distance field from that
+    * `:sdf-ms` : render a bitmap from font, scaled up by `scale`, and calculate single-channel distance field from that
     * `:msdf` : calculate a multichannel sdf directly from vector data in font
     * `:psdf` : calculate a single channel signed pseudo-distance field directly from vector data in font
 
 * `auto-size-granularity-x`, `auto-size-granularity-y` : default `1`,`1`. Granularity of increasing texture size when using `:auto` for `width` and/or `height`. Separate to allow for multiple-of-4 width if desired for 32 bit row stride
 
-* `optimize-pack` : default `NIL`. If true, try various sizes to try to get a better packing (seems to help compared to just `:auto`, but might still be flaky and/or slow)
-
 * `trim` : default `NIL`. If `:y-only`, trim any empty space from vertical edges of texture. If non-`NIL`, trim empty space from all sides of texture.
 
+* `expand-mode`: default `:restart`. When using `:auto` dimensions or
+  `:optimize-pack t`, tells whether to `:restart` packing from scratch
+  after each increase in size, or to `:continue` with current pack
+  after expanding size. `:restart` usually gives smaller atlas, but
+  might be slower, especially with `optimize-pack`.
+
+* `optimize-pack` : default `NIL`. If true, try various sizes to try
+  to get a better packing (seems to help compared to just `:auto`, but
+  might still be flaky and/or slow). If set to `:both`, try both
+  `:restart` and `:continue` `expand-mode`s (very slow, but might save
+  another few %)

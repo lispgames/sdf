@@ -68,7 +68,8 @@
                      (auto-size-granularity-x 1)
                      (auto-size-granularity-y 1)
                      (optimize-pack nil)
-                     (trim nil))
+                     (trim nil)
+                     (expand-mode :restart))
   (zpb-ttf:with-font-loader (ttf font-name)
     (let* ((font-height (- (zpb-ttf:ascender ttf)
                            (zpb-ttf:descender ttf)))
@@ -84,7 +85,8 @@
                     :width width :height height
                     :auto-size-granularity-x auto-size-granularity-x
                     :auto-size-granularity-y auto-size-granularity-y
-                    :optimize-pack optimize-pack)))
+                    :optimize-pack optimize-pack
+                    :expand-mode expand-mode)))
            (pack (car %pack))
            (dims (cdr %pack)))
       (when (or (eql width :auto) optimize-pack)
