@@ -45,7 +45,7 @@
                       (sdf ttf g font-scale scale spread))
                      (:sdf-ms
                       (sdf/ms ttf g font-scale scale spread))
-                     (:msdf
+                     ((:msdf :msdf+a)
                       (msdf ttf g font-scale scale spread)))
                  (list
                   :glyph g

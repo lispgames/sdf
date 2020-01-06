@@ -3,6 +3,7 @@
 (require 'sdf)
 
 (defvar *backend* :sdf)
+(defvar *corner-angle-threshhold* (* 1 (/ pi 180)))
 
 (declaim (inline s-p0 s-p2 s-t1 s-t2 s-channels s-start s-c s-r))
 (defstruct (segment (:conc-name s-))
@@ -56,7 +57,20 @@
   ((points :accessor points :initarg :points)
    (lines :accessor lines :initarg :lines)
    (curves :accessor curves :initarg :curves)
+   (contours :accessor contours :initarg :contours)
+   (%next :reader %next :initform (make-hash-table))
+   (%prev :reader %prev :initform (make-hash-table))
    (qtree :reader qtree :initarg :qtree)))
+
+(defun next (shape element)
+  (gethash element (%next shape)))
+(defun (setf next) (new shape element)
+  (setf (gethash element (%next shape)) new))
+
+(defun prev (shape element)
+  (gethash element (%prev shape)))
+(defun (setf prev) (new shape element)
+  (setf (gethash element (%prev shape)) new))
 
 
 (defun make-point (p edge1 edge2)
@@ -68,11 +82,13 @@
   (when (equalp (s-p0 edge1) p)
     (assert (equalp (s-p2 edge2) p))
     (rotatef edge1 edge2))
-  (let ((t1 (s-t2 edge1))
-        (t2 (s-t1 edge2))
+  (let ((t1 (v2n (s-t2 edge1)))
+        (t2 (v2n (s-t1 edge2)))
         (corner nil))
-    (when (> (abs (v2x t1 t2)) 0.1)
-      (setf corner t))
+    (let ((dot (v2. t1 t2)))
+     (when (or #++(<= dot 0)
+               (< dot (cos *corner-angle-threshhold*)))
+       (setf corner t)))
     (%make-point :p0 p
                  :e1 edge1
                  :e2 edge2
@@ -185,7 +201,10 @@
     (cond
       ((and (zerop det) (zerop det0))
        (let ((r (make-array 1 :element-type 'double-float)))
-         (setf (aref r 0) (/ b (* -3 a)))
+         (setf (aref r 0)
+               (if (zerop a)
+                   0d0
+                   (/ b (* -3 a))))
          r))
       ((zerop det)
        (let ((r (make-array 2 :element-type 'double-float)))
@@ -290,10 +309,12 @@
     ;; smooth edges just return actual distance
     (unless (p-corner s)
       ;; d1/d2 should be nearly equal
+      (loop with d = (if (< (abs d1) (abs d2)) d1 d2)
+            for a across (s-channels (p-e1 s))
+            for i from 0
+            when a do (setf (aref coloring i) d))
       (return-from pseudo-distance/p
-        (if (<= (abs d1) (abs d2))
-            (vector d1 d1 d1)
-            (vector d2 d2 d2))))
+        coloring))
 
     ;; due to way colors are assigned, at a corner we have 3 cases we
     ;; care about for the 3 color channels at corners: both edges on,
@@ -350,7 +371,8 @@
                    most-positive-double-float))
         (pd (vector most-positive-double-float
                     most-positive-double-float
-                    most-positive-double-float)))
+                    most-positive-double-float))
+        (d1 (/ most-positive-double-float 256)))
     (loop for s in (append (points shape)
                            (lines shape)
                            (curves shape))
@@ -359,7 +381,6 @@
                      (dist/* p s))
           for pdp = (when dp
                       (pseudo-distance p s dp pdist))
-
           when (complexp dp)
             do (break "complex ~s?" dp)
           do (when dp
@@ -369,22 +390,27 @@
                            (< (abs dp) (abs (aref d i))))
                        do (setf (aref d i) dp)
                           (setf (aref pd i) (aref pdp i))
-                          (setf (aref d 3) 0d0)
-                          (loop for x across d
-                                when (> (abs x) (abs (aref d 3)))
-                                  do (setf (aref d 3) x)))))
-    (list (aref pd 0) (aref pd 1) (aref pd 2))))
+                          (setf (aref d 3)
+                                (loop for i below 3
+                                      maximize (aref d i)))
+                          (when (< (abs dp) (abs d1))
+                            (setf d1
+                                  (aref (remove nil (pseudo-distance p s dp nil))
+                                        0))))))
+    (list (aref pd 0) (aref pd 1) (aref pd 2) d1)))
 
 (defun scale-point (p s)
   (when p
     (v2 (* s (zpb-ttf:x p))
         (* s (zpb-ttf:y p)))))
 
-(defun translate-glyph (glyph scale)
+(defun translate-glyph (glyph scale &key filter)
   (let ((points (make-hash-table :test 'equalp))
         (lines)
         (curves)
-        (first))
+        (first)
+        (shapes)
+        (contours))
     (zpb-ttf:do-contours (c glyph)
       (setf first t)
       (zpb-ttf:do-contour-segments (p0 p1 p2) c
@@ -398,17 +424,45 @@
             (if p1
                 (push s curves)
                 (push s lines))
+            (push s contours)
             (push s (gethash p0 points))
             (push s (gethash p2 points)))))
-      (setf first nil))
+      (setf first nil)
+      (setf contours (nreverse contours))
+      (push
+       (make-instance 'shape
+                      :points
+                      #++(loop for i from 0
+                            for k being the hash-key of points using (hash-value v)
+                            do (assert (= (length v) 2))
+                            collect (apply 'make-point k v))
+
+                      (loop for c in contours
+                            collect (apply 'make-point (s-p0 c)
+                                           (gethash (s-p0 c) points)))
+                      :lines lines
+                      :curves curves
+                      :contours contours)
+       shapes)
+      (let ((s (car shapes)))
+        (loop for p in (points s)
+              do (setf (prev s p) (p-e1 p))
+                 (setf (next s (p-e1 p)) p)
+
+                 (setf (next s p) (p-e2 p))
+                 (setf (prev s (p-e2 p)) p)))
+      (setf lines nil
+            curves nil
+            contours nil)
+      (clrhash points))
+    (when filter
+      (setf shapes (mapcar filter shapes)))
     (make-instance 'shape
-                   :points
-                   (loop for i from 0
-                         for k being the hash-key of points using (hash-value v)
-                         do (assert (= (length v) 2))
-                         collect (apply 'make-point k v))
-                   :lines lines
-                   :curves curves)))
+                   :points (reduce 'append shapes :key 'points :from-end t)
+                   :lines (reduce 'append shapes :key 'lines :from-end t)
+                   :curves (reduce 'append shapes :key 'curves :from-end t)
+                   :contours (reduce 'append (reverse shapes)
+                                     :key 'contours :from-end t))))
 
 (defvar *f* (list nil))
 (defun sdf (font glyph font-scale ms-scale spread)
