@@ -1,9 +1,5 @@
 (in-package #:sdf)
 
-(defparameter *default-characters*
-  "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789.,;:?!@#$%^&*()-_<>'\"[]/\\| ")
-
-
 (defmacro with-glyph-data ((glyph metrics &optional (sdf (gensym)) (padding (gensym))) data &body body)
   `(destructuring-bind (&key ((:glyph ,glyph))
                              ((:metrics ,metrics))
@@ -60,9 +56,20 @@
                             :right-side-bearing (fscale (zpb-ttf:right-side-bearing g)))
                   :sdf sdf)))))
 
+(defun find-available-glyphs (ttf)
+  (let ((table (make-hash-table :test 'eql)))
+    (loop for idx from 0 below (zpb-ttf:glyph-count ttf)
+          for cp = (zpb-ttf:code-point (zpb-ttf:index-glyph idx ttf))
+          do (setf (gethash cp table) cp))
+    (let ((string (make-string (hash-table-count table))))
+      (loop for i from 0 below (length string)
+            for cp being the hash-keys of table
+            do (setf (aref string i) (code-char cp)))
+      string)))
+
 (defun make-atlas (font-name pixel-size
                    &key (scale 8) (spread 2.5)
-                     (string *default-characters*)
+                     string
                      (width :auto) (height :auto)
                      ((:mode *backend*) :sdf)
                      (auto-size-granularity-x 1)
@@ -71,6 +78,8 @@
                      (trim nil)
                      (expand-mode :restart))
   (zpb-ttf:with-font-loader (ttf font-name)
+    (unless string
+      (setf string (find-available-glyphs ttf)))
     (let* ((font-height (- (zpb-ttf:ascender ttf)
                            (zpb-ttf:descender ttf)))
            (font-scale (/ pixel-size font-height))

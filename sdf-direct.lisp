@@ -454,7 +454,6 @@
   (let ((*backend* :direct)
         (g (zpb-ttf:find-glyph
             (print (char "@|kSWA*OXI5" 0))
-            ;;(print (alexandria:random-elt *default-characters*))
             ttf))
         (scale (print (float (/ 64 (- (zpb-ttf:ascender ttf)
                                       (zpb-ttf:descender ttf)))))))

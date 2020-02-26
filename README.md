@@ -6,9 +6,8 @@ Generates [sdf](https://steamcdn-a.akamaihd.net/apps/valve/2007/SIGGRAPH2007_Alp
 
 `(save-atlas (make-atlas "font.ttf" pixel-size) "atlas.png" "metric.met")`
 
-Writes an atlas named `atlas.png` containing the characters in
-`sdf:*default-characters*` from font `font.ttf`, with tallest
-characters about `pixel-size` pixels tall.
+Writes an atlas named `atlas.png` containing all the available characters
+from font `font.ttf`, with tallest characters about `pixel-size` pixels tall.
 
 ### more options:
 
@@ -22,7 +21,7 @@ __make-atlas__ *font-name pixel-size* &key *scale spread string width height mod
 
 * `spread` : default `2.5`. Range of pixels covered by distance field. lower gives a bit better precision close to shape edges, larger allows for wider blur effects
 
-* `string` : default `*default-characters*`, vector of characters to include in atlas
+* `string` : vector of characters to include in atlas, or NIL for all available.
 
 * `width`, `height` : default `:auto`. Size of texture to generate. If `:auto`, will guess a reasonable size and expand to fit. Due to incremental resizing, packing returned by `:auto` might not be same as returned by same sizes passed directly.
 
