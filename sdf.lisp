@@ -128,6 +128,5 @@
                                                        (aref sdf iy ix i))))))))
          (%make-atlas out (make-metrics glyph-data font-scale ttf)))))))
 
-(defun save-atlas (atlas png-filename metrics-filename)
-  (declare (ignore metrics-filename))
+(defun save-atlas (atlas png-filename)
   (opticl:write-image-file png-filename (atlas-image atlas)))
