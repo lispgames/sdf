@@ -22,12 +22,14 @@
                             (* offset scale)))))))
      finally (return table)))
 
-(defun make-metrics (glyph-data scale ttf)
-  (make-font-metrics :glyphs (mapcar (lambda (g) (getf g :metrics)) glyph-data)
-                     :ascender (* scale (zpb-ttf:ascender ttf))
-                     :descender (* scale (zpb-ttf:descender ttf))
-                     :line-gap (* scale (zpb-ttf:line-gap ttf))
-                     :kerning-table (make-kerning-table glyph-data scale ttf)))
+(defun make-metrics (size glyph-data scale ttf)
+  (make-font-metrics
+   :size size
+   :glyphs (mapcar (lambda (g) (getf g :metrics)) glyph-data)
+   :ascender (* scale (zpb-ttf:ascender ttf))
+   :descender (* scale (zpb-ttf:descender ttf))
+   :line-gap (* scale (zpb-ttf:line-gap ttf))
+   :kerning-table (make-kerning-table glyph-data scale ttf)))
 
 (defun obtain-glyph-data (string font-scale scale spread ttf)
   (flet ((fscale (v)
@@ -126,7 +128,8 @@
                                      do (loop for i below 3
                                               do (setf (aref out oy ox i)
                                                        (aref sdf iy ix i))))))))
-         (%make-atlas out (make-metrics glyph-data font-scale ttf)))))))
+         ;; FIXME: I don't know if the 3 for the distance range is correct here.
+         (%make-atlas *backend* 3 out (make-metrics pixel-size glyph-data font-scale ttf)))))))
 
 (defun save-atlas (atlas png-filename)
   (opticl:write-image-file png-filename (atlas-image atlas)))
