@@ -2,7 +2,8 @@
 
 
 (defstruct (font-metrics
-             (:conc-name font-))
+            (:conc-name font-))
+  (size nil :read-only t)
   (glyphs nil :read-only t)
   (ascender nil :read-only t)
   (descender nil :read-only t)
@@ -21,6 +22,8 @@
 
 
 (defstruct (atlas
-             (:constructor %make-atlas (image metrics)))
+            (:constructor %make-atlas (field-type distance-range image metrics)))
+  (field-type nil :read-only t)
+  (distance-range nil :read-only t)
   (image nil :read-only t)
   (metrics nil :read-only t))

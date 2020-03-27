@@ -3,9 +3,12 @@
   (:export #:make-atlas
            #:save-atlas
 
+           #:atlas-field-type
+           #:atlas-distance-range
            #:atlas-image
            #:atlas-metrics
 
+           #:font-size
            #:font-glyphs
            #:font-ascender
            #:font-descender
