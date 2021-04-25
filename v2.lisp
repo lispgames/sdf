@@ -1,15 +1,27 @@
-(in-package #:sdf)
+(in-package #:sdf/base)
 
-(declaim (inline v2 vx vy
-                    v2- v2+ v2h* v2. v2x v2dist v2scale v2mag v2n v2rx))
+(declaim (inline v2 vx vy (setf vx) (setf vy)
+                 v2- v2+ v2h* v2. v2x v2dist v2scale v2mag v2n v2rx))
 (defun vx (v) (aref v 0))
 (defun vy (v) (aref v 1))
+
+(defun (setf vx) (n v) (setf (aref v 0) n))
+(defun (setf vy) (n v) (setf (aref v 1) n))
 (deftype v2 () '(simple-array double-float (2)))
+
+
+(declaim (inline d))
+(defun d (x)
+  (coerce x 'double-float))
+
+(defmacro cd ((&rest vars) &body body)
+  `(let (,@ (loop for v in vars collect `(,v (d ,v))))
+     ,@body))
+
 
 (defun v2 (x y)
   (make-array 2 :element-type 'double-float
-                :initial-contents (list (coerce x 'double-float)
-                                        (coerce y 'double-float))))
+                :initial-contents (list (d x) (d y))))
 
 (defun v2- (a b)
   (declare (type v2 a b))

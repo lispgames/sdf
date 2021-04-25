@@ -1,4 +1,4 @@
-(in-package :sdf)
+(in-package :sdf/ttf)
 
 
 (defstruct (font-metrics

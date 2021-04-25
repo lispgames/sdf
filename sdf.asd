@@ -1,18 +1,37 @@
+(asdf:defsystem :sdf/base
+  :description "Signed distance field generator"
+  :version "0.0.1"
+  :author "Bart Botta <00003b at gmail.com>"
+  :license "MIT"
+  :depends-on (cl-vectors cl-paths cl-aa cl-aa-misc)
+  :serial t
+  :components ((:file "packages-base")
+               (:file "v2")
+               (:file "geometry")
+               (:file "shape")
+               (:file "sdf-base")
+               (:file "sdf")))
+
+(asdf:defsystem :sdf/ttf
+  :description "utilities for SDF font generation"
+  :version "0.0.1"
+  :author "Bart Botta <00003b at gmail.com>"
+  :license "MIT"
+  :depends-on (sdf/base zpb-ttf cl-paths-ttf binpack)
+  :serial t
+  :components ((:file "packages-ttf")
+               (:file "metrics")
+               (:file "ttf")))
+
 (asdf:defsystem :sdf
-  :description "Signed distance field glyph atlas generator"
+  :description "Signed distance field font glyph atlas generator."
   :version "0.0.1"
   :author "Bart Botta <00003b at gmail.com>, Pavel Korolev <dev@borodust.org>"
   :license "MIT"
-  :depends-on (zpb-ttf cl-vectors cl-paths cl-aa cl-aa-misc cl-paths-ttf opticl
-                       binpack)
+  :depends-on (sdf/base sdf/ttf opticl)
   :serial t
   :components ((:file "packages")
-               (:file "metrics")
-               (:file "v2")
-               (:file "sdf-direct")
-               (:file "sdf-ms")
-               (:file "msdf")
-               (:file "sdf")))
+               (:file "api")))
 
 (asdf:defsystem :sdf/bmfont
   :description "Convert an SDF atlas to a bmfont structure"
@@ -22,3 +41,12 @@
   :depends-on (3b-bmfont sdf pathname-utils)
   :serial t
   :components ((:file "bmfont")))
+
+
+
+(defsystem sdf/test
+  :depends-on (3b-mmath parachute)
+  :serial t
+  :perform
+  (asdf:test-op (op c) (uiop:symbol-call :parachute :test :sdf/test))
+  :components ((:file "tests")))
