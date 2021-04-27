@@ -41,12 +41,18 @@
    ;; the shape, and can't start or end a span of "inside" or
    ;; "outside" points.
 
-   ;; NIL means point is in the middle of 2 co-linear horizontal
-   ;; segments, in which case it could be removed without affecting
-   ;; shape of curve, so should be ignored here as well
+   ;; NIL means point is at the end of an 'inflection point'
+   ;; horizontal segment, and point at beginning of horizontal edge
+   ;; already marked the transition between 'inside' and 'outside'
+   ;; along that span. If horizontal segment is a 'local extreme'
+   ;; instead of an 'inflection point', either both ends are NIL or 1
+   ;; end is CW and other is CCW (not sure yet, but doesn't matter
+   ;; since samples along that segment have distance 0 regardless of sign)
+   #++
    (windings :reader windings :initform (make-hash-table))
 
-   (bounding-box :reader bounding-box :initform (make-aabb))))
+   (bounding-box :reader bounding-box :initform (make-aabb))
+   (rbounding-box :reader rbounding-box :initform (make-raabb))))
 
 (defparameter *dump* nil)
 #++
@@ -59,13 +65,66 @@
            (,point nil))
        (labels
            ((%update-aabb (x y)
-              (update-aabb (bounding-box ,shape) x y))
+              (update-aabb (bounding-box ,shape) x y)
+              (update-raabb (rbounding-box ,shape) x y))
+
+            (split-b/y (b)
+              (let* ((v1 (p-v (b2-p1 b)))
+                     (vc (b2-c1 b))
+                     (v2 (p-v (b2-p2 b)))
+                     (y1 (vy v1))
+                     (yc (vy vc))
+                     (y2 (vy v2))
+                     (yc-y1 (- yc y1)))
+                (when (= yc-y1 (- y2 yc))
+                  (break "? ~s" b))
+                ;; return T of extreme point on curve
+                (/ yc-y1 (- yc-y1 (- y2 yc)))))
+            (split-b/x (b)
+              (let* ((v1 (p-v (b2-p1 b)))
+                     (vc (b2-c1 b))
+                     (v2 (p-v (b2-p2 b)))
+                     (x1 (vx v1))
+                     (xc (vx vc))
+                     (x2 (vx v2))
+                     (xc-x1 (- xc x1)))
+                (when (= xc-x1 (- x2 xc))
+                  (break "? ~s" b))
+                ;; return T of extreme point on curve
+                (/ xc-x1 (- xc-x1 (- x2 xc)))))
+            (%update-aabb-for-b2 (b)
+              ;; bezier2 can extend past its end points, so in that
+              ;; case find the extrema and add them
+              (let* ((x1 (b2-x1 b))
+                     (y1 (b2-y1 b))
+                     (xc (b2-xc b))
+                     (yc (b2-yc b))
+                     (x2 (b2-x2 b))
+                     (y2 (b2-y2 b))
+                     (x nil)
+                     (y nil)
+                     (xl (min x1 x2))
+                     (xh (max x1 x2))
+                     (yl (min y1 y2))
+                     (yh (max y1 y2)))
+                (unless (or (= xl xc xh) (< xl xc xh))
+                  (let ((tt (split-b/x b)))
+                    (setf x (funcall (if (> xc xh) 'max 'min)
+                                     (a:lerp tt x1 xc)
+                                     (a:lerp tt xc x2)))))
+                (unless (or (= yl yc yh) (< yl yc yh))
+                  (let ((tt (split-b/y b)))
+                    (setf y (funcall (if (> yc yh) 'max 'min)
+                                     (a:lerp tt y1 yc)
+                                     (a:lerp tt yc y2)))))
+                (when (or x y)
+                  ;; todo: expand this to nearest 1/N of a pixel if
+                  ;; values are otherwise rationals to keep bbox rational?
+                  (%update-aabb (or x x1) (or y y1)))))
             (%add-point (x y)
               (when *dump* (format t "  add point ~s,~s~%" x y))
               (%update-aabb x y)
               (setf ,point (make-point x y))
-              ;;(vector-push-extend ,point (points ,shape))
-              ;;(setf (gethash ,point (contour-index ,shape)) ,contour)
               ,point)
             (start-contour (x y)
               (when *dump* (format t "start contour~%"))
@@ -76,113 +135,18 @@
               (vector-push-extend ,point (contours ,shape)))
             (line-to (x y)
               (when *dump* (format t "   line-to ~s,~s~%" x y))
-              (with-point (,point px py)
-                (when (and (= x px) (= y py))
-                  (warn "dropping degenerate line ~s .. ~s,~s" ,point x y)
-                  (return-from line-to nil)))
+              (with-point (,point px py))
               (let* ((prev ,point)
                      (p (%add-point x y))
                      (l (make-segment/p prev p)))
                 (setf (next ,shape prev) l)
                 (setf (prev ,shape l) prev)
                 (setf (next ,shape l) p)
-                (setf (prev ,shape p) l)
-                ;;(vector-push-extend l (lines ,shape))
-                ;;(setf (gethash l (contour-index ,shape) ,contour))
-                ))
-            #++
-            (prev-tan (p)
-              (let ((a (prev ,shape p)))
-                (etypecase a
-                  (segment
-                   (v2n (v2- (p-v (s-p2 a))
-                             (p-v (s-p1 a)))))
-                  (bezier2
-                   (v2n (v2- (p-v (b2-p2 a))
-                             (b2-c1 a)))))))
-            #++
-            (next-tan (p)
-              (let ((a (next ,shape p)))
-                (etypecase a
-                  (segment
-                   (v2n (v2- (p-v (s-p2 a))
-                             (p-v (s-p1 a)))))
-                  (bezier2
-                   (v2n (v2- (b2-c1 a)
-                             (p-v (b2-p1 a))))))))
-            #++
-            (add-point-tangents ()
-              (loop with p0 = (aref (contours ,shape),contour)
-                    with p = p0
-                    for i from 0
-                    when (> i 1000)
-                      do (break "~s" ,shape)
-                    when (typep p 'point)
-                      do (let* ((pt (prev-tan p))
-                                (tt (v2+ pt (next-tan p))))
-                           (if (and (< (abs (vx tt)) 0.001)
-                                    (< (abs (vy tt)) 0.001))
-                               (setf tt (v2rx pt))
-                               (setf tt (v2n tt)))
-                           (setf (gethash p (point-tangents ,shape)) tt))
-                    do (setf p (next ,shape p))
-                    until (eq p p0)))
-            (mark-contour-windings ()
-              (loop with p0 = (aref (contours ,shape),contour)
-                    with p = p0
-                    for i from 0
-                    when (> i 1000)
-                      do (break "~s" ,shape)
-                    do (etypecase p
-                         (null (break "~s" p))
-                         (point
-                          (let* ((prev (prev ,shape p))
-                                 (next (next ,shape p))
-                                 (y (p-y p))
-                                 (py (etypecase prev
-                                       (null (break "~s" p) y)
-                                       (segment
-                                        (s-y1 prev))
-                                       (bezier2
-                                        (if (= y (b2-yc prev))
-                                            (b2-y1 prev)
-                                            (b2-yc prev)))))
-                                 (ny (etypecase next
-                                       (null (break "~s" p) y)
-                                       (segment
-                                        (s-y2 next))
-                                       (bezier2
-                                        (if (= y (b2-yc next))
-                                            (b2-y2 next)
-                                            (b2-yc next))))))
-                            (setf (gethash p (windings ,shape))
-                                  (cond
-                                    ((= py y ny) nil)
-                                    ((<= py y ny) :cw)
-                                    ((>= py y ny) :ccw)
-                                    (t :both)))))
-                         (segment
-                          (setf (gethash p (windings ,shape))
-                                (if (or (> (s-y2 p) (s-y1 p))
-                                        (and (= (s-y2 p) (s-y1 p))
-                                             (> (s-x2 p) (s-x1 p))))
-                                    :cw :ccw)))
-                         (bezier2
-                          (let ((y1 (b2-y1 p))
-                                (yc (b2-yc p))
-                                (y2 (b2-y2 p)))
-                            (setf (gethash p (windings ,shape))
-                                  (cond
-                                    ((<= y1 yc y2) :cw)
-                                    ((>= y2 yc y1) :ccw)
-                                    (t :both))))))
-                       (setf p (next ,shape p))
-                    until (eq p p0)))
+                (setf (prev ,shape p) l)))
             (end-contour (&key close)
               (when *dump* (format t "end contour (close ~s)~%" close))
               (assert ,contour)
               (let ((s (aref (contours ,shape) ,contour)))
-                ;; todo: drop empty contours
                 (ecase close
                   ((nil) ;; assume curve is closed
                    )
@@ -195,43 +159,39 @@
                          s ,point))
                 (let* ((prev (prev ,shape ,point)))
                   (assert (not (prev ,shape s)))
+                  (assert (typep s 'point))
+                  (etypecase prev
+                    (segment
+                     (when *dump*
+                       (format t "relink last segment ~s -> ~s~%"
+                               (s-p2 prev) s))
+                     (assert (point= (s-p2 prev) ,point))
+                     (setf (s-p2 prev) s))
+                    (bezier2
+                     (when *dump*
+                       (format t "relink last bez ~s -> ~s~%"
+                               (b2-p2 prev) s))
+                     (assert (point= (b2-p2 prev) ,point))
+                     (setf (b2-p2 prev) s)))
                   (setf (prev ,shape s) prev)
                   (setf (next ,shape prev) s)
                   (remhash ,point (%prev ,shape))
                   (remhash ,point (%next ,shape))))
-              #++
-              (add-point-tangents)
-              (mark-contour-windings)
               (setf ,contour nil)
               (setf ,point nil))
             (quadratic-to (cx cy x y)
               (when *dump*
                 (format t "   quadratic-to ~s,~s   ~s,~s~%" cx cy x y))
-              (with-point (,point px py)
-                (when (or (and (= px cx) (= py cy))
-                          (and (= cx x) (= cy y)))
-                  (warn "converting degenerate quadratic to segment, ~s- ~s,~s - ~s,~s"
-                        ,point cx cy x y)
-                  (Return-From quadratic-to
-                    (line-to px py)))
-
-                (when (and (= x px) (= y py))
-                  (break "dropping degenerate quadratic ~s .. ~s,~s .. ~s,~s"
-                         ,point cx cy x y)
-                  (return-from quadratic-to nil)))
-              (%update-aabb cx cy)
               (let* ((prev ,point)
                      (p (%add-point x y))
                      (q (%make-bezier2 prev
                                        (v2 cx cy)
                                        p)))
+                (%update-aabb-for-b2 q)
                 (setf (next ,shape prev) q)
                 (setf (prev ,shape q) prev)
                 (setf (next ,shape q) p)
-                (setf (prev ,shape p) q)
-                ;;(vector-push-extend q (curves ,shape))
-                ;;(setf (gethash q (contour-index ,shape) ,contour))
-                ))
+                (setf (prev ,shape p) q)))
             (add-metadata (key value)
               ;; not sure if this should allow duplicates or not?
               ;; for now allowing it, since sdf code doesn't care
@@ -272,6 +232,288 @@
                  for end = (eql nn c)
                  do (funcall function c# n end)
                  until end)))
+
+
+(defun clean-shape (shape &key (verbose *dump*))
+  ;; return a copy of SHAPE with degenerate contours, curves,
+  ;; segments, and points removed
+  (let ((contours (make-hash-table)))
+    (map-contour-segments shape (lambda (c n e)
+                                  (declare (ignore e))
+                                  (push n (gethash c contours))))
+    (flet ((empty-bez (n)
+             ;; b2 has 0 area if start and end points are same point
+             (and (typep n 'bezier2)
+                  (point= (b2-p1 n) (b2-p2 n))))
+           (flat-bez (n)
+             ;; b2 is flat if control point is same as 1 end, or all 3
+             ;; have same X or Y value (if all 3 have same X and Y, it
+             ;; should have been removed by 'empty' check already)
+             (when (typep n 'bezier2)
+               (let ((x1 (b2-x1 n))
+                     (y1 (b2-y1 n))
+                     (xc (b2-xc n))
+                     (yc (b2-yc n))
+                     (x2 (b2-x2 n))
+                     (y2 (b2-y2 n)))
+                 (or (and (= x1 xc) (= y1 yc))
+                     (and (= xc x2) (= yc y2))
+                     (= x1 xc x2)
+                     (= y1 yc y2)))))
+           (empty-seg (n)
+             (when (typep n 'segment)
+               (and (= (s-x1 n) (s-x2 n))
+                    (= (s-y1 n) (s-y2 n)))))
+           (flat-seg (n)
+             (when (typep n 'segment)
+               (let ((x (when (= (s-x1 n) (s-x2 n)) (s-x2 n)))
+                     (y (when (= (s-y1 n) (s-y2 n)) (s-y2 n))))
+                 (when (or x y)
+                   (list x y)))))
+           (flat-seg-cont (f n)
+             (when (typep n 'segment)
+               (let ((x (when (= (s-x1 n) (s-x2 n)) (s-x2 n)))
+                     (y (when (= (s-y1 n) (s-y2 n)) (s-y2 n))))
+                 (when (or x y)
+                   (equalp f (list x y)))))))
+      (with-shape-builder (new :metadata (metadata shape))
+        (loop for k in (a:hash-table-keys contours)
+              ;; contour in reverse order
+              for rev = (gethash k contours)
+              ;; assuming contours start on a POINT, so end on a line or curve
+              do (assert (not (typep (car rev) 'point)))
+              do ;; remove degenerate curves
+                 (setf rev
+                       (loop with c = rev
+                             for n = (pop c)
+                             while n
+                             when (empty-bez n)
+                               ;; if start and end of curve are same point,
+                               ;; it has 0 area so remove it and end point
+                               do (when verbose
+                                    (format t "~&dropped empty bezier ~s, and end-poipnt ~s~%" n (car c)))
+                                  (pop c)
+                             else
+                               when (flat-bez n)
+                                 ;; if control point is same as start or end
+                                 ;; point, convert it to a segment. If
+                                 ;; start/control/end all have same X or Y
+                                 ;; value, convert it to a segment.
+                                 do (when verbose
+                                      (format t "~&convert flat bezier ~s to segment~%" n))
+                                 and collect (make-segment/p (b2-p1 n) (b2-p2 n))
+                             else collect n))
+              do ;; remove degenerate segments
+                 (setf rev
+                       (loop with c = rev
+                             for n = (pop c)
+                             while n
+                             when (empty-seg n)
+                               ;; if start and end of segment are same point,
+                               ;; remove it and end point
+                               do (pop c)
+                             else collect n))
+              do ;; combine adjacent horizontal or vertical segments.
+                 ;; (angled segments don't affect interior mask
+                 ;; generation, so ignored for now. FP error would make
+                 ;; them harder to detect anyway)
+                 (let ((start (flat-seg (car rev)))
+                       (end nil))
+                   (setf rev
+                         (loop with c = rev
+                               for n = (pop c)
+                               for flat = (flat-seg n)
+                               while n
+                               when flat
+                                 do (setf end n)
+                               when (and flat (flat-seg-cont flat (cadr c)))
+                                 ;; while next segment continues this one
+                                 do (when verbose
+                                      (format t "~&joining flat segments after ~s:~%" n))
+                                    (loop while (flat-seg-cont flat (cadr c))
+                                          ;; drop start point of next segment
+                                          do (when verbose
+                                               (format t "  ~s | ~s~%"
+                                                       (car c) (cadr c)))
+                                             (assert (typep (pop c) 'point))
+                                             ;; and next segment
+                                             (pop c))
+                                    ;; and then make a new segment from
+                                    ;; start of this one and the
+                                    ;; endpoint of last one we dropped
+                                 and collect (setf end
+                                                   (make-segment/p (car c)
+                                                                   (s-p2 n)))
+                               else collect n
+                                    and do (setf end nil)))
+                   (when (and start (equalp (flat-seg end) start))
+
+                     (break "todo: join segments that overlap start")))
+
+
+                 ;; contour has no area if: no bez2 and 2 or fewer lines
+                 ;; 1 bez2 and no lines.
+              when (let ((lines (count-if 'segment-p rev))
+                         (bez (count-if 'bezier2-p rev)))
+                     (or (and (zerop bez) (< lines 3))
+                         (and (zerop lines) (= bez lines 1))))
+                do (when verbose
+                     (format t "dropping degenerate contour: (~s nodes)~%"
+                             (length rev))
+                     (loop for i in rev
+                           do (format t "  ~s~%" i)))
+              else ;; add cleaned contour to new shape
+              do (let* ((c (reverse rev))
+                        (start (car c)))
+                   (assert (typep start 'point))
+                   (start-contour (p-x start) (p-y start))
+                   (loop for prev = start then next
+                         for (edge next) on (cdr c) by #'cddr
+                         ;; make sure contour still makes sense
+                         do (when next (assert (typep next 'point)))
+                            (assert (typep edge '(or segment bezier2)))
+                         #++(etypecase edge
+                              (segment
+                               (assert (point= prev (s-p1 edge)))
+                               (assert (point= next (s-p2 edge))))
+                              (bezier2
+                               (assert (point= prev (b2-p1 edge)))
+                               (assert (point= next (b2-p2 edge)))))
+                         do (etypecase edge
+                              (segment
+                               (line-to (s-x2 edge) (s-y2 edge)))
+                              (bezier2
+                               (quadratic-to (b2-xc edge) (b2-yc edge)
+                                             (b2-x2 edge) (b2-y2 edge)))))
+                   (end-contour)))))))
+
+(defun check-shape (shape)
+  (map-contour-segments
+   shape
+   (lambda (c n e)
+     (declare (ignorable c e))
+     (assert (prev shape n))
+     (assert (next shape n))
+     (etypecase n
+       (point)
+       (segment
+        (assert (eq (s-p1 n) (prev shape n)))
+        (assert (eq (s-p2 n) (next shape n))))
+       (bezier2
+        (assert (eq (b2-p1 n) (prev shape n)))
+        (assert (eq (b2-p2 n) (next shape n)))))))
+  shape)
+
+(defun %classify-point (shape node windings)
+  (flet ((py (y prev)
+           (etypecase prev
+             (point
+              (p-y prev))
+             (segment
+              (s-y1 prev))
+             (bezier2
+              (if (= y (b2-yc prev))
+                  (b2-y1 prev)
+                  (b2-yc prev)))))
+         (ny (y next)
+           (etypecase next
+             (point
+              (p-y next))
+             (segment
+              (s-y2 next))
+             (bezier2
+              (if (= y (b2-yc next))
+                  (b2-y2 next)
+                  (b2-yc next)))))
+         (s (y iter yp)
+           (loop for p = (funcall iter shape node) then (funcall iter shape p)
+                 while (= (funcall yp y p) y)
+                 when (eql p node)
+                   do (format t "bad contour?~%")
+                      (map-contour-segments
+                       shape (lambda (a b c)
+                               (format t " ~s ~s ~s~%" a c b)))
+                      (error "couldn't find edge with different Y, degenerate contour?")
+                 finally (return p))))
+    (let* ((y (p-y node))
+           ;; find next Y values in either direction that differ from
+           ;; this one
+           (prev (s y #'prev #'py))
+           (next (s y #'next #'ny))
+           (py (py y prev))
+           (ny (ny y next))
+           (flat (= y (py y (prev shape node)))))
+      ;; if point is at end of a horizontal segment, we might
+      ;; need to ignore it depending on surrounding shape.
+
+      ;; if a horizontal segment is exactly on a sample line,
+      ;; it doesn't matter if it is counted as interior or
+      ;; exterior, since that will only be used to set sign of
+      ;; a distance that will be 0 since it is sampled exactly
+      ;; on that segment.
+
+      ;; In that case we only need to be careful about how
+      ;; many transitions are added by the points adjacent to
+      ;; that segment. If the segment is a local extreme
+      ;; (shape continues upwards on both ends, or downwards
+      ;; on both ends) then we need exactly 0 or 2 transitions
+      ;; (corresponding to samples on segment being exterior
+      ;; or interior). If it is an inflection point (shape
+      ;; continues upwards on one side and downwards on
+      ;; other), we need exactly 1 transition to get the right
+      ;; results from non-zero fill rule. We arbitrarily pick
+      ;; the start point of the segment in that case so we
+      ;; only need to test the end point.
+      (let ((w (cond
+                 ((<= py y ny) (if flat nil :cw))
+                 ((>= py y ny) (if flat nil :ccw))
+                 (t :both))))
+        (setf (gethash node windings) w)))))
+
+(defun %classify-segment (shape node windings)
+  (declare (ignorable shape))
+  (let ((y1 (s-y1 node))
+        (y2 (s-y2 node)))
+    (setf (gethash node windings)
+          (if (or (> y2 y1)
+                  (and (= y1 y2)
+                       (> (s-x2 node) (s-x1 node))))
+              :cw :ccw))))
+
+(defun %classify-bezier2 (shape node windings)
+  (declare (ignorable shape))
+  (let ((y1 (b2-y1 node))
+        (yc (b2-yc node))
+        (y2 (b2-y2 node)))
+    (setf (gethash node windings)
+          (cond
+            ;; completely flat should have been converted to segment
+            ((= y1 yc y2)
+             (break "degenerate bezier ~,3f,~,3f ~,3f,~,3f ~,3f,~,3f"
+                    (b2-x1 node) (b2-y1 node)
+                    (b2-xc node) (b2-yc node)
+                    (b2-x2 node) (b2-y2 node)))
+            ;; non-decreasing Y = CW
+            ((<= y1 yc y2) :cw)
+            ;; non-increasing Y = CCW
+            ((>= y1 yc y2) :ccw)
+            ;; otherwise we have an inflection point, and might be
+            ;; both CW and CCW for a particular scan-line
+            (t :both)))))
+
+(defun classify-shape-windings (shape)
+  (let ((windings (make-hash-table)))
+    (flet ((classify-node (c# node endp)
+             (declare (ignore c# endp))
+             (etypecase node
+               (point
+                (%classify-point shape node windings))
+               (segment
+                (%classify-segment shape node windings))
+               (bezier2
+                (%classify-bezier2 shape node windings)))))
+      (map-contour-segments shape #'classify-node))
+    windings))
 
 #++
 (defmethod update-instance-for-different-class :after ((old shape)

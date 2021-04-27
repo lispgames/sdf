@@ -11,6 +11,12 @@
    ;; 2d or 3d array of pixel values after sdf is generated. 0,0 is
    ;; top left of SDF image
    (image :reader image :initform nil :initarg :image)
+   ;; y coordinates of samples in image, as vector of double-float
+   ;; (stored separately to make sure we always get same results in
+   ;; various steps, and to allow calculating it with rationals to
+   ;; reduce fp loss)
+   (sample-ys :reader sample-ys :initform nil :initarg :sample-ys)
+
    ;; 2d bit array of flags indicating if a particular sample is
    ;; inside the shape (1 = in)
    (signs :Reader signs :initform nil :initarg :signs)

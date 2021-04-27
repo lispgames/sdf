@@ -74,3 +74,7 @@
 (defun v2rx (v)
   (declare (type v2 v))
   (v2 (- (vy v)) (vx v)))
+
+(defun v2lerp (a b f)
+  (v2+ (v2scale a (- 1.0 f))
+       (v2scale b f)))

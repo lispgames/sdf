@@ -37,6 +37,28 @@
   (- (aabb-y2 bb) (aabb-y1 bb)))
 
 
+
+;; version of aabb that preserves type of inputs, so we can calculate
+;; things with rationals if desired
+(defstruct (raabb (:constructor make-raabb (&optional x1 y1 x2 y2)))
+  (x1 nil :type (or null real))
+  (y1 nil :type (or null real))
+  (x2 nil :type (or null real))
+  (y2 nil :type (or null real)))
+
+(defun update-raabb (bb x y)
+  (setf (raabb-x1 bb) (if (raabb-x1 bb) (min x (raabb-x1 bb)) x))
+  (setf (raabb-y1 bb) (if (raabb-y1 bb) (min y (raabb-y1 bb)) y))
+  (setf (raabb-x2 bb) (if (raabb-x2 bb) (max x (raabb-x2 bb)) x))
+  (setf (raabb-y2 bb) (if (raabb-y2 bb) (max y (raabb-y2 bb)) y)))
+
+(defun raabb-wx (bb)
+  (- (raabb-x2 bb) (raabb-x1 bb)))
+(defun raabb-wy (bb)
+  (- (raabb-y2 bb) (raabb-y1 bb)))
+
+
+
 (declaim (inline %make-point make-point p-v p-x p-y))
 
 (defstruct (point (:conc-name p-)
