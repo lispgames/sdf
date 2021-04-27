@@ -8,6 +8,7 @@
 (defun (setf vx) (n v) (setf (aref v 0) n))
 (defun (setf vy) (n v) (setf (aref v 1) n))
 (deftype v2 () '(simple-array double-float (2)))
+(deftype rv2 () '(simple-array real (2)))
 
 
 (declaim (inline d))
@@ -78,3 +79,71 @@
 (defun v2lerp (a b f)
   (v2+ (v2scale a (- 1.0 f))
        (v2scale b f)))
+
+
+(declaim (inline rv2 rv2- rv2+ rv2h* rv2. rv2x
+                 rv2dist rv2scale rv2mag rv2n rv2rx))
+
+(defun rv2 (x y)
+  (make-array 2 :element-type 'real
+                :initial-contents (list x y)))
+
+(defun rv2d (v)
+  (declare (type rv2 v))
+  (v2 (vx v) (vy v)))
+
+(defun rv2- (a b)
+  (declare (type rv2 a b))
+  (map 'rv2 #'- a b))
+
+(defun rv2+ (a b)
+  (declare (type rv2 a b))
+  (map 'rv2 #'+ a b))
+
+(defun rv2h* (a b)
+  (declare (type rv2 a b))
+  (map 'rv2 #'* a b))
+
+(defun rv2x (a b)
+  (declare (type rv2 a b))
+  (- (* (vx a) (vy b))
+     (* (vy a) (vx b))))
+
+(defun rv2. (a b)
+  (declare (type rv2 a b))
+  (+ (* (vx a) (vx b))
+     (* (vy a) (vy b))))
+
+(defun rv2dist (a b)
+  (declare (type rv2 a b))
+  (let* ((d (rv2- a b))
+         (l (rv2. d d)))
+    (if (minusp l)
+        (error "complex length?")
+        (sqrt l))))
+
+(defun rv2mag (v)
+  (declare (type rv2 v))
+  (let ((l (rv2. v v)))
+    (if (minusp l)
+        (error "complex mag?")
+        (sqrt l))))
+
+(defun rv2scale (v f)
+  (declare (type rv2 v))
+  (rv2 (* f (vx v)) (* f (vy v))))
+
+
+(defun rv2n (v)
+  (declare (type rv2 v))
+  (let ((l (rv2mag v)))
+    (assert (not (zerop l)))
+    (rv2scale v (/ l))))
+
+(defun rv2rx (v)
+  (declare (type rv2 v))
+  (rv2 (- (vy v)) (vx v)))
+
+(defun rv2lerp (a b f)
+  (rv2+ (rv2scale a (- 1.0 f))
+       (rv2scale b f)))

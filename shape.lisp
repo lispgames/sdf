@@ -1,6 +1,8 @@
 (in-package #:sdf/base)
 
-
+(declaim (inline lerp))
+(defun lerp (f a b)
+  (+ (* (- 1 f) a) (* f b)))
 
 
 (defclass shape ()
@@ -57,64 +59,50 @@
 (setf *dump* t)
 
 (defmacro with-shape-builder ((shape &key metadata) &body body)
-  (alexandria:with-gensyms (contour point)
+  (alexandria:with-gensyms (contour point point-x point-y)
     `(let ((,shape (make-instance 'shape :metadata ,metadata))
            (,contour nil)
-           (,point nil))
+           (,point nil)
+           ;; store copy of original coords so we can calculate bounds of bez2
+           ;; with rationals if input is rational
+           (,point-x nil)
+           (,point-y nil))
        (labels
            ((%update-aabb (x y)
               (update-aabb (bounding-box ,shape) x y)
               (update-raabb (rbounding-box ,shape) x y))
 
-            (split-b/y (b)
-              (let* ((v1 (p-v (b2-p1 b)))
-                     (vc (b2-c1 b))
-                     (v2 (p-v (b2-p2 b)))
-                     (y1 (vy v1))
-                     (yc (vy vc))
-                     (y2 (vy v2))
-                     (yc-y1 (- yc y1)))
+            (split-b/y (y1 yc y2)
+              (let* ((yc-y1 (- yc y1)))
                 (when (= yc-y1 (- y2 yc))
-                  (break "? ~s" b))
+                  (break "? ~s ~s ~s" y1 yc y2))
                 ;; return T of extreme point on curve
                 (/ yc-y1 (- yc-y1 (- y2 yc)))))
-            (split-b/x (b)
-              (let* ((v1 (p-v (b2-p1 b)))
-                     (vc (b2-c1 b))
-                     (v2 (p-v (b2-p2 b)))
-                     (x1 (vx v1))
-                     (xc (vx vc))
-                     (x2 (vx v2))
-                     (xc-x1 (- xc x1)))
+            (split-b/x (x1 xc x2)
+              (let* ((xc-x1 (- xc x1)))
                 (when (= xc-x1 (- x2 xc))
-                  (break "? ~s" b))
+                  (break "? ~s ~s ~s" x1 xc x2))
                 ;; return T of extreme point on curve
                 (/ xc-x1 (- xc-x1 (- x2 xc)))))
-            (%update-aabb-for-b2 (b)
+            (%update-aabb-for-b2 (x1 y1 xc yc x2 y2)
               ;; bezier2 can extend past its end points, so in that
               ;; case find the extrema and add them
-              (let* ((x1 (b2-x1 b))
-                     (y1 (b2-y1 b))
-                     (xc (b2-xc b))
-                     (yc (b2-yc b))
-                     (x2 (b2-x2 b))
-                     (y2 (b2-y2 b))
-                     (x nil)
+              (let* ((x nil)
                      (y nil)
                      (xl (min x1 x2))
                      (xh (max x1 x2))
                      (yl (min y1 y2))
                      (yh (max y1 y2)))
                 (unless (or (= xl xc xh) (< xl xc xh))
-                  (let ((tt (split-b/x b)))
+                  (let ((tt (split-b/x x1 xc x2)))
                     (setf x (funcall (if (> xc xh) 'max 'min)
-                                     (a:lerp tt x1 xc)
-                                     (a:lerp tt xc x2)))))
+                                     (lerp tt x1 xc)
+                                     (lerp tt xc x2)))))
                 (unless (or (= yl yc yh) (< yl yc yh))
-                  (let ((tt (split-b/y b)))
+                  (let ((tt (split-b/y y1 yc y2)))
                     (setf y (funcall (if (> yc yh) 'max 'min)
-                                     (a:lerp tt y1 yc)
-                                     (a:lerp tt yc y2)))))
+                                     (lerp tt y1 yc)
+                                     (lerp tt yc y2)))))
                 (when (or x y)
                   ;; todo: expand this to nearest 1/N of a pixel if
                   ;; values are otherwise rationals to keep bbox rational?
@@ -122,6 +110,8 @@
             (%add-point (x y)
               (when *dump* (format t "  add point ~s,~s~%" x y))
               (%update-aabb x y)
+              (setf ,point-x x)
+              (setf ,point-y y)
               (setf ,point (make-point x y))
               ,point)
             (start-contour (x y)
@@ -133,7 +123,7 @@
               (vector-push-extend ,point (contours ,shape)))
             (line-to (x y)
               (when *dump* (format t "   line-to ~s,~s~%" x y))
-              (with-point (,point px py))
+              #++(with-rpoint (,point px py))
               (let* ((prev ,point)
                      (p (%add-point x y))
                      (l (make-segment/p prev p)))
@@ -142,14 +132,16 @@
                 (setf (next ,shape l) p)
                 (setf (prev ,shape p) l)))
             (end-contour (&key close)
-              (when *dump* (format t "end contour (close ~s)~%" close))
+              (when *dump*
+                (format t "end contour (close ~s)~%" close)
+                (format t "  rbounds = ~s~%" (rbounding-box ,shape)))
               (assert ,contour)
               (let ((s (aref (contours ,shape) ,contour)))
                 (ecase close
                   ((nil) ;; assume curve is closed
                    )
                   (:line ;; close with line
-                   (with-point (s x y)
+                   (with-rpoint (s x y)
                      (line-to x y))))
                 (unless (point= s ,point)
                   ;; todo: close-with-line restart
@@ -161,7 +153,7 @@
                   (etypecase prev
                     (segment
                      (when *dump*
-                       (format t "relink last segment ~s -> ~s~%"
+                       (format t "relink last segment ~s~% -> ~s~%"
                                (s-p2 prev) s))
                      (assert (point= (s-p2 prev) ,point))
                      (setf (s-p2 prev) s))
@@ -181,11 +173,13 @@
               (when *dump*
                 (format t "   quadratic-to ~s,~s   ~s,~s~%" cx cy x y))
               (let* ((prev ,point)
+                     (px ,point-x)
+                     (py ,point-y)
                      (p (%add-point x y))
                      (q (%make-bezier2 prev
-                                       (v2 cx cy)
+                                       (make-point cx cy)
                                        p)))
-                (%update-aabb-for-b2 q)
+                (%update-aabb-for-b2 px py cx cy x y)
                 (setf (next ,shape prev) q)
                 (setf (prev ,shape q) prev)
                 (setf (next ,shape q) p)
@@ -248,30 +242,30 @@
              ;; have same X or Y value (if all 3 have same X and Y, it
              ;; should have been removed by 'empty' check already)
              (when (typep n 'bezier2)
-               (let ((x1 (b2-x1 n))
-                     (y1 (b2-y1 n))
-                     (xc (b2-xc n))
-                     (yc (b2-yc n))
-                     (x2 (b2-x2 n))
-                     (y2 (b2-y2 n)))
+               (let ((x1 (b2-rx1 n))
+                     (y1 (b2-ry1 n))
+                     (xc (b2-rxc n))
+                     (yc (b2-ryc n))
+                     (x2 (b2-rx2 n))
+                     (y2 (b2-ry2 n)))
                  (or (and (= x1 xc) (= y1 yc))
                      (and (= xc x2) (= yc y2))
                      (= x1 xc x2)
                      (= y1 yc y2)))))
            (empty-seg (n)
              (when (typep n 'segment)
-               (and (= (s-x1 n) (s-x2 n))
-                    (= (s-y1 n) (s-y2 n)))))
+               (and (= (s-rx1 n) (s-rx2 n))
+                    (= (s-ry1 n) (s-ry2 n)))))
            (flat-seg (n)
              (when (typep n 'segment)
-               (let ((x (when (= (s-x1 n) (s-x2 n)) (s-x2 n)))
-                     (y (when (= (s-y1 n) (s-y2 n)) (s-y2 n))))
+               (let ((x (when (= (s-rx1 n) (s-rx2 n)) (s-rx2 n)))
+                     (y (when (= (s-ry1 n) (s-ry2 n)) (s-ry2 n))))
                  (when (or x y)
                    (list x y)))))
            (flat-seg-cont (f n)
              (when (typep n 'segment)
-               (let ((x (when (= (s-x1 n) (s-x2 n)) (s-x2 n)))
-                     (y (when (= (s-y1 n) (s-y2 n)) (s-y2 n))))
+               (let ((x (when (= (s-rx1 n) (s-rx2 n)) (s-rx2 n)))
+                     (y (when (= (s-ry1 n) (s-ry2 n)) (s-ry2 n))))
                  (when (or x y)
                    (equalp f (list x y)))))))
       (with-shape-builder (new :metadata (metadata shape))
@@ -364,7 +358,7 @@
               do (let* ((c (reverse rev))
                         (start (car c)))
                    (assert (typep start 'point))
-                   (start-contour (p-x start) (p-y start))
+                   (start-contour (p-rx start) (p-ry start))
                    (loop for prev = start then next
                          for (edge next) on (cdr c) by #'cddr
                          ;; make sure contour still makes sense
@@ -372,10 +366,10 @@
                             (assert (typep edge '(or segment bezier2)))
                          do (etypecase edge
                               (segment
-                               (line-to (s-x2 edge) (s-y2 edge)))
+                               (line-to (s-rx2 edge) (s-ry2 edge)))
                               (bezier2
-                               (quadratic-to (b2-xc edge) (b2-yc edge)
-                                             (b2-x2 edge) (b2-y2 edge)))))
+                               (quadratic-to (b2-rxc edge) (b2-ryc edge)
+                                             (b2-rx2 edge) (b2-ry2 edge)))))
                    (end-contour)))))))
 
 #++

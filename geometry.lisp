@@ -59,14 +59,18 @@
 
 
 
-(declaim (inline %make-point make-point p-v p-x p-y))
+(declaim (inline %make-point make-point p-dv p-x p-y))
 
 (defstruct (point (:conc-name p-)
-                  (:constructor %make-point (v)))
-  (v (v2 0d0 0d0) :type v2))
+                  (:constructor %make-point (rv dv)))
+  (rv (rv2 0 0) :type rv2)
+  (dv (v2 0d0 0d0) :type v2))
 
-(defun p-x (p) (vx (p-v p)))
-(defun p-y (p) (vy (p-v p)))
+(defun p-rx (p) (vx (p-rv p)))
+(defun p-ry (p) (vy (p-rv p)))
+
+(defun p-dx (p) (vx (p-dv p)))
+(defun p-dy (p) (vy (p-dv p)))
 
 ;; not sure if points should actually be mutable or not?
 #++
@@ -74,29 +78,41 @@
 #++
 (defun (setf p-y) (n p) (setf (vy (p-v p)) n))
 
-(defmacro with-point ((p x y) &body body)
-  `(symbol-macrolet ((,x (p-x ,p))
-                     (,y (p-y ,p)))
+(defmacro with-rpoint ((p x y) &body body)
+  `(symbol-macrolet ((,x (p-rx ,p))
+                     (,y (p-ry ,p)))
      ,@body))
 
-(defun make-point (&optional (x 0d0) (y 0d0))
-  (%make-point (v2 x y)))
+(defmacro with-dpoint ((p x y) &body body)
+  `(symbol-macrolet ((,x (p-dx ,p))
+                     (,y (p-dy ,p)))
+     ,@body))
+
+(defun make-point (&optional (x 0) (y 0))
+  (%make-point (rv2 x y) (v2 x y)))
 
 (defun point= (p1 p2)
   (or (eq p1 p2)
-      (and (= (p-x p1) (p-x p2))
-           (= (p-y p1) (p-y p2)))))
+      (and (= (p-rx p1) (p-rx p2))
+           (= (p-ry p1) (p-ry p2)))))
 
-(declaim (inline %make-segment s-p1 s-p2 s-x1 s-y1 s-x2 s-y2))
+(declaim (inline %make-segment s-p1 s-p2
+                 s-rx1 s-ry1 s-rx2 s-ry2
+                 s-dx1 s-dy1 s-dx2 s-dy2))
 (defstruct (segment (:conc-name s-)
                     (:constructor %make-segment (p1 p2)))
   (p1 (make-point) :type point)
   (p2 (make-point) :type point))
 
-(defun s-x1 (b) (p-x (s-p1 b)))
-(defun s-y1 (b) (p-y (s-p1 b)))
-(defun s-x2 (b) (p-x (s-p2 b)))
-(defun s-y2 (b) (p-y (s-p2 b)))
+(defun s-rx1 (b) (p-rx (s-p1 b)))
+(defun s-ry1 (b) (p-ry (s-p1 b)))
+(defun s-rx2 (b) (p-rx (s-p2 b)))
+(defun s-ry2 (b) (p-ry (s-p2 b)))
+
+(defun s-dx1 (b) (p-dx (s-p1 b)))
+(defun s-dy1 (b) (p-dy (s-p1 b)))
+(defun s-dx2 (b) (p-dx (s-p2 b)))
+(defun s-dy2 (b) (p-dy (s-p2 b)))
 
 (defun make-segment/p (p1 p2)
   (%make-segment p1 p2))
@@ -108,15 +124,22 @@
             (:conc-name b2-)
             (:constructor %make-bezier2 (p1 c1 p2)))
   (p1 (make-point) :type point)
-  (c1 (v2 0d0 0d0) :type v2)
+  (c1 (make-point) :type point)
   (p2 (make-point) :type point))
 
-(defun b2-x1 (b) (p-x (b2-p1 b)))
-(defun b2-y1 (b) (p-y (b2-p1 b)))
-(defun b2-xc (b) (vx (b2-c1 b)))
-(defun b2-yc (b) (vy (b2-c1 b)))
-(defun b2-x2 (b) (p-x (b2-p2 b)))
-(defun b2-y2 (b) (p-y (b2-p2 b)))
+(defun b2-rx1 (b) (p-rx (b2-p1 b)))
+(defun b2-ry1 (b) (p-ry (b2-p1 b)))
+(defun b2-rxc (b) (p-rx (b2-c1 b)))
+(defun b2-ryc (b) (p-ry (b2-c1 b)))
+(defun b2-rx2 (b) (p-rx (b2-p2 b)))
+(defun b2-ry2 (b) (p-ry (b2-p2 b)))
+
+(defun b2-dx1 (b) (p-dx (b2-p1 b)))
+(defun b2-dy1 (b) (p-dy (b2-p1 b)))
+(defun b2-dxc (b) (p-dx (b2-c1 b)))
+(defun b2-dyc (b) (p-dy (b2-c1 b)))
+(defun b2-dx2 (b) (p-dx (b2-p2 b)))
+(defun b2-dy2 (b) (p-dy (b2-p2 b)))
 
 
 
@@ -126,21 +149,21 @@
   (declare (optimize speed))
   (check-type p point)
   (check-type v v2)
-  (v2dist v (p-v p)))
+  (v2dist v (p-dv p)))
 
 (defun dist/v2-point/sf (v p)
   (declare (optimize speed))
   (check-type p point)
   (check-type v v2)
-  (coerce (v2dist v (p-v p)) 'single-float))
+  (coerce (v2dist v (p-dv p)) 'single-float))
 
 
 (defun dist/v2-line/sf (v s)
   (declare (optimize speed))
   (check-type s segment)
   (check-type v v2)
-  (let* ((p0 (p-v (s-p1 s)))
-         (n (v2- (p-v (s-p2 s)) p0))
+  (let* ((p0 (p-dv (s-p1 s)))
+         (n (v2- (p-dv (s-p2 s)) p0))
          (l (v2. n n))
          (tt (/ (v2. (v2- v p0) n)
                 l))
@@ -155,8 +178,8 @@
   (declare (optimize speed))
   (check-type s segment)
   (check-type v v2)
-  (let* ((p0 (p-v (s-p1 s)))
-         (n (v2- (p-v (s-p2 s)) p0))
+  (let* ((p0 (p-dv (s-p1 s)))
+         (n (v2- (p-dv (s-p2 s)) p0))
          (l (v2. n n))
          (tt (/ (v2. (v2- v p0) n)
                 l))
@@ -228,9 +251,9 @@
   (declare (optimize speed))
   (check-type c bezier2)
   (check-type p v2)
-  (let* ((p0 (p-v (b2-p1 c)))
-         (p1 (b2-c1 c))
-         (p2 (p-v (b2-p2 c)))
+  (let* ((p0 (p-dv (b2-p1 c)))
+         (p1 (p-dv (b2-c1 c)))
+         (p2 (p-dv (b2-p2 c)))
          (d (v2- p p0))
          (d1 (v2- p1 p0))
          (d2 (v2- p2 (v2- (v2scale p1 2) p0)))

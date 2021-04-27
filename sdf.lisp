@@ -10,9 +10,9 @@
   (if (zerop (length (contours shape)))
       ;; not sure what this should do for empty shapes yet?
       (list 2 2)
-      (let* ((bounds (bounding-box shape))
-             (dx (- (aabb-x2 bounds) (aabb-x1 bounds)))
-             (dy (- (aabb-y2 bounds) (aabb-y1 bounds)))
+      (let* ((bounds (rbounding-box shape))
+             (dx (- (raabb-x2 bounds) (raabb-x1 bounds)))
+             (dy (- (raabb-y2 bounds) (raabb-y1 bounds)))
              (wx (/ dx scale))
              (wy (/ dy scale)))
         (format t "calculate size ~s, ~s: ~% ~s~% = ~s~%"
@@ -183,16 +183,16 @@
                (loop for n = (next shape n0) then (next shape n)
                      do (etypecase n
                           (point
-                           (when (/= (p-y n) y0)
-                             (return-from next-y (p-y n))))
+                           (when (/= (p-ry n) y0)
+                             (return-from next-y (p-ry n))))
                           (segment
-                           (when (/= (s-y2 n) y0)
-                             (return-from next-y (s-y2 n))))
+                           (when (/= (s-ry2 n) y0)
+                             (return-from next-y (s-ry2 n))))
                           (bezier2
-                           (when (/= (b2-yc n) y0)
-                             (return-from next-y (b2-yc n)))
-                           (when (/= (b2-yc n) y0)
-                             (return-from next-y (b2-y2 n)))))
+                           (when (/= (b2-ryc n) y0)
+                             (return-from next-y (b2-ryc n)))
+                           (when (/= (b2-ryc n) y0)
+                             (return-from next-y (b2-ry2 n)))))
                      when (eq n0 n)
                        do (error "couldn't find next Y value?")))
              (prev-y (n0 y0)
@@ -200,16 +200,16 @@
                      do #++(format t "search prev ~s? ~s~%" y0 n)
                         (etypecase n
                           (point
-                           (when (/= (p-y n) y0)
-                             (return-from prev-y (p-y n))))
+                           (when (/= (p-ry n) y0)
+                             (return-from prev-y (p-ry n))))
                           (segment
-                           (when (/= (s-y1 n) y0)
-                             (return-from prev-y (s-y1 n))))
+                           (when (/= (s-ry1 n) y0)
+                             (return-from prev-y (s-ry1 n))))
                           (bezier2
-                           (when (/= (b2-yc n) y0)
-                             (return-from prev-y (b2-yc n)))
-                           (when (/= (b2-yc n) y0)
-                             (return-from prev-y (b2-y1 n)))))
+                           (when (/= (b2-ryc n) y0)
+                             (return-from prev-y (b2-ryc n)))
+                           (when (/= (b2-ryc n) y0)
+                             (return-from prev-y (b2-ry1 n)))))
                      when (eq n0 n)
                        do (error "couldn't find previous Y value?")))
              (add-x (j x dir)
@@ -222,7 +222,7 @@
                  (error "tried to calculate direction of horizontal span?"))
                (if (< y1 y2) :up :down))
              (addp (n end)
-               (let* ((y1 (p-y n))
+               (let* ((y1 (p-ry n))
                       (py (prev-y n y1))
                       (ny (next-y n y1)))
                  ;; might finish-section a few extra times if we have
@@ -231,12 +231,12 @@
                              (> py y1 ny))
                    (finish-section t end))))
              (adds (n end)
-               (let ((y1 (s-y1 n))
-                     (y2 (s-y2 n)))
+               (let ((y1 (s-ry1 n))
+                     (y2 (s-ry2 n)))
                  (when *dump-mask*
                    (format t "add-segment ~s,~s -> ~s,~s ~@[end ~s~]~%"
-                           (s-x1 n) (s-y1 n)
-                           (s-x2 n) (s-y2 n)
+                           (s-rx1 n) (s-ry1 n)
+                           (s-rx2 n) (s-ry2 n)
                            end))
                  (cond
 
@@ -256,8 +256,8 @@
                    (t
                     ;; normal segment, add samples for all spans it crosses
                     (loop with dir = (dir y1 y2)
-                          with x1 = (s-x1 n)
-                          with x2 = (s-x2 n)
+                          with x1 = (s-rx1 n)
+                          with x2 = (s-rx2 n)
                           with s = (/ (- x2 x1)
                                       (- y2 y1))
                           ;; fixme: don't search entire range
@@ -269,9 +269,9 @@
                  (when end
                    (finish-section nil end))))
              (split-b (b)
-               (let* ((v1 (p-v (b2-p1 b)))
-                      (vc (b2-c1 b))
-                      (v2 (p-v (b2-p2 b)))
+               (let* ((v1 (p-rv (b2-p1 b)))
+                      (vc (p-rv (b2-c1 b)))
+                      (v2 (p-rv (b2-p2 b)))
                       (y1 (vy v1))
                       (yc (vy vc))
                       (y2 (vy v2))
@@ -282,15 +282,15 @@
                (when *dump-mask*
                  (format t "addb ~@[end=~s ~]~s,~s -> ~s,~s -> ~s,~s~%"
                          end
-                         (b2-x1 n) (b2-y1 n)
-                         (b2-xc n) (b2-yc n)
-                         (b2-x2 n) (b2-y2 n)))
-               (let* ((x1 (b2-x1 n))
-                      (y1 (b2-y1 n))
-                      (xc (b2-xc n))
-                      (yc (b2-yc n))
-                      (x2 (b2-x2 n))
-                      (y2 (b2-y2 n))
+                         (b2-rx1 n) (b2-ry1 n)
+                         (b2-rxc n) (b2-ryc n)
+                         (b2-rx2 n) (b2-ry2 n)))
+               (let* ((x1 (b2-rx1 n))
+                      (y1 (b2-ry1 n))
+                      (xc (b2-rxc n))
+                      (yc (b2-ryc n))
+                      (x2 (b2-rx2 n))
+                      (y2 (b2-ry2 n))
                       (a (+ y1 (* -2 yc) y2))
                       (b (* 2 (- yc y1)))
                       (-b (- b))
@@ -301,9 +301,9 @@
                                       (>= y1 yc y2))
                             (split-b n)))
                       (sy (when st
-                            (a:lerp st
-                                    (a:lerp st y1 yc)
-                                    (a:lerp st yc y2))))
+                            (lerp st
+                                  (lerp st y1 yc)
+                                  (lerp st yc y2))))
                       (samples nil))
                  (loop
                    ;; fixme: don't search entire range
@@ -326,15 +326,15 @@
                                        samples))
                                 ((plusp disc)
                                  ;; 2 solutions, add both to list
-                                 (let* ((r (sqrt disc))
+                                 (let* ((r (sqrt (float disc 1d0)))
                                         (t1 (/ (- -b r) 2a))
                                         (t2 (/ (+ -b r) 2a)))
                                    (push (list t1 :normal j) samples)
                                    (push (list t2 :normal j) samples)))))))
                  (flet ((x (at)
-                          (a:lerp at
-                                  (a:lerp at x1 xc)
-                                  (a:lerp at xc x2))))
+                          (lerp at
+                                  (lerp at x1 xc)
+                                  (lerp at xc x2))))
                    (let ((s (sort samples '< :key 'car)))
                      (cond
                        ((and st (not s))
@@ -470,16 +470,15 @@
                                             (channels-for-type type)))
                               :element-type 'single-float
                               :initial-element 0.0))
-           (samples (make-array wy :element-type 'double-float
-                                   :initial-element 0d0))
+           (samples (make-array wy :element-type 'real
+                                   :initial-element 0))
            (signs (make-array (list wy wx) :element-type 'bit
                                            :initial-element 0)))
 
       (loop for j below (length samples)
             do (setf (aref samples j)
-                     (float (+ (* (- oy 1/2) scale)
-                               (* j (- scale)))
-                            0d0)))
+                     (+ (* (- oy 1/2) scale)
+                        (* j (- scale)))))
 
       (format t "make image ~s x ~s x ~s~%" wx wy (channels-for-type type))
       (format t "bounds = ~s~%" (bounding-box shape))
@@ -497,7 +496,7 @@
 
       (let ((sdf (make-instance 'sdf :spread spread :sdf-type type
                                      :shape shape
-                                     :pixel-scale scale :origin (v2 ox oy)
+                                     :pixel-scale scale :origin (rv2 ox oy)
                                      :image image :signs signs
                                      :sample-ys samples)))
         (render-sdf sdf)
