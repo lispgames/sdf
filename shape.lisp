@@ -378,22 +378,6 @@
                                              (b2-x2 edge) (b2-y2 edge)))))
                    (end-contour)))))))
 
-(defun check-shape (shape)
-  (map-contour-segments
-   shape
-   (lambda (c n e)
-     (declare (ignorable c e))
-     (assert (prev shape n))
-     (assert (next shape n))
-     (etypecase n
-       (point)
-       (segment
-        (assert (eq (s-p1 n) (prev shape n)))
-        (assert (eq (s-p2 n) (next shape n))))
-       (bezier2
-        (assert (eq (b2-p1 n) (prev shape n)))
-        (assert (eq (b2-p2 n) (next shape n)))))))
-  shape)
 #++
 (defmethod update-instance-for-different-class :after ((old shape)
                                                        (new indexed-shape)
@@ -453,6 +437,21 @@
 
 
 (defmethod check-shape ((shape shape))
+  (map-contour-segments
+   shape
+   (lambda (c n e)
+     (declare (ignorable c e))
+     (assert (prev shape n))
+     (assert (next shape n))
+     (etypecase n
+       (point)
+       (segment
+        (assert (eq (s-p1 n) (prev shape n)))
+        (assert (eq (s-p2 n) (next shape n))))
+       (bezier2
+        (assert (eq (b2-p1 n) (prev shape n)))
+        (assert (eq (b2-p2 n) (next shape n)))))))
+
   (let ((starts (make-hash-table))
         (max (hash-table-count (%next shape))))
     (assert (= (hash-table-count (%next shape))
