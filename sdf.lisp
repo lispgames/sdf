@@ -15,11 +15,12 @@
              (dy (- (raabb-y2 bounds) (raabb-y1 bounds)))
              (wx (/ dx scale))
              (wy (/ dy scale)))
-        (format t "calculate size ~s, ~s: ~% ~s~% = ~s~%"
-                spread scale
-                bounds
-                (list (ceiling (+ 1 wx (* spread 2)))
-                      (ceiling (+ 1 wy (* spread 2)))))
+        (when *dump-mask*
+          (format t "calculate size ~s, ~s: ~% ~s~% = ~s~%"
+                  spread scale
+                  bounds
+                  (list (ceiling (+ 1 wx (* spread 2)))
+                        (ceiling (+ 1 wy (* spread 2))))))
         (list (ceiling (+ 1 wx (* spread 2)))
               (ceiling (+ 1 wy (* spread 2)))))))
 
@@ -359,8 +360,10 @@
                         (loop with dir = (dir y1 y2)
                               for (tt flag j) in s
                               for x = (x tt)
-                              do (assert (not (eq flag :extreme)))
-                                 (when (<= 0 tt 1)
+                              do (when (<= 0 tt 1)
+                                   (assert (or (not (eq flag :extreme))
+                                               (= 0 tt)
+                                               (= 1 tt)))
                                    (add-x j (x tt) dir))))))))
                (when end
                  (finish-section nil t)))
@@ -419,35 +422,35 @@
                      for x from i below (array-dimension signs 1)
                      do (setf (aref signs j x) in))))))
 
-(defun render-sdf (sdf)
+(defun render-sdf (sdf &key (render t))
   (let* ((origin (origin sdf))
          (spread (spread sdf))
          (scale (pixel-scale sdf))
          (image (image sdf))
          (shape (shape sdf))
          (signs (signs sdf)))
-    (time
-     (mask-sdf sdf
-               (* (- 0.5 (vx origin)) scale) scale
-               (* (- (vy origin) 0.5) scale) (- scale)))
-    (time
-     (loop with wy = (array-dimension image 0)
-           for j below wy
-           ;; sample sdf at pixel centers
-           for y = (* (- (vy origin) 0.5 j)
-                      scale)
-           do (loop for i below (array-dimension image 1)
-                    for x = (* (- (+ i 0.5) (vx origin))
-                               scale)
-                    do (setf (aref image j i 0)
-                             (float
-                              (* (if (zerop (aref signs j i)) -1 1)
-                                 (/ (distance-to-shape shape x y)
-                                    (* scale spread)))
-                              1.0)))))))
+    (mask-sdf sdf
+              (* (- 0.5 (vx origin)) scale) scale
+              (* (- (vy origin) 0.5) scale) (- scale))
+    (when render
+      (loop with wy = (array-dimension image 0)
+            for j below wy
+            ;; sample sdf at pixel centers
+            for y = (* (- (vy origin) 0.5 j)
+                       scale)
+            do (loop for i below (array-dimension image 1)
+                     for x = (* (- (+ i 0.5) (vx origin))
+                                scale)
+                     do (setf (aref image j i 0)
+                              (float
+                               (* (if (zerop (aref signs j i)) -1 1)
+                                  (/ (distance-to-shape shape x y)
+                                     (* scale spread)))
+                               1.0)))))))
 
 
-(defun make-sdf (type shape &key (spread 2.5) (scale 1) integer-offset)
+(defun make-sdf (type shape &key (spread 2.5) (scale 1) integer-offset
+                              (render t) origin)
   (when integer-offset
     ;; when true, calculate origin etc as (fixed-point?) integers instead
     ;; of doubles so we can store integer values in bmfont files
@@ -474,30 +477,33 @@
                                    :initial-element 0))
            (signs (make-array (list wy wx) :element-type 'bit
                                            :initial-element 0)))
-
+      (when origin
+        (setf ox (aref origin 0))
+        (setf oy (aref origin 1))
+        )
       (loop for j below (length samples)
             do (setf (aref samples j)
                      (+ (* (- oy 1/2) scale)
                         (* j (- scale)))))
-
-      (format t "make image ~s x ~s x ~s~%" wx wy (channels-for-type type))
-      (format t "bounds = ~s~%" (bounding-box shape))
-      (format t "rbounds = ~s~%" (rbounding-box shape))
-      (format t "origin = ~s~%     ~s~%" (list ox oy) (list cx cy))
-      #++
-      (format t "samples at y = (oy= ~s / scale=~s):~%" oy scale)
-      #++
-      (loop for y across samples
-            for j from 0
-            do (format t "  ~s = ~s = ~s~%"
-                       j (+ (* (- oy 1/2) scale)
-                            (* j (- scale)))
-                       y))
+      (when *dump-mask*
+        (format t "make image ~s x ~s x ~s~%" wx wy (channels-for-type type))
+        (format t "bounds = ~s~%" (bounding-box shape))
+        (format t "rbounds = ~s~%" (rbounding-box shape))
+        (format t "origin = ~s~%     ~s~%" (list ox oy) (list cx cy))
+        #++
+        (format t "samples at y = (oy= ~s / scale=~s):~%" oy scale)
+        #++
+        (loop for y across samples
+              for j from 0
+              do (format t "  ~s = ~s = ~s~%"
+                         j (+ (* (- oy 1/2) scale)
+                              (* j (- scale)))
+                         y)))
 
       (let ((sdf (make-instance 'sdf :spread spread :sdf-type type
                                      :shape shape
                                      :pixel-scale scale :origin (rv2 ox oy)
                                      :image image :signs signs
                                      :sample-ys samples)))
-        (render-sdf sdf)
+        (render-sdf sdf :render render)
         sdf))))
