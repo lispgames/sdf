@@ -48,8 +48,6 @@
    ;; instead of an 'inflection point', either both ends are NIL or 1
    ;; end is CW and other is CCW (not sure yet, but doesn't matter
    ;; since samples along that segment have distance 0 regardless of sign)
-   #++
-   (windings :reader windings :initform (make-hash-table))
 
    (bounding-box :reader bounding-box :initform (make-aabb))
    (rbounding-box :reader rbounding-box :initform (make-raabb))))
@@ -372,13 +370,6 @@
                          ;; make sure contour still makes sense
                          do (when next (assert (typep next 'point)))
                             (assert (typep edge '(or segment bezier2)))
-                         #++(etypecase edge
-                              (segment
-                               (assert (point= prev (s-p1 edge)))
-                               (assert (point= next (s-p2 edge))))
-                              (bezier2
-                               (assert (point= prev (b2-p1 edge)))
-                               (assert (point= next (b2-p2 edge)))))
                          do (etypecase edge
                               (segment
                                (line-to (s-x2 edge) (s-y2 edge)))
@@ -403,118 +394,6 @@
         (assert (eq (b2-p1 n) (prev shape n)))
         (assert (eq (b2-p2 n) (next shape n)))))))
   shape)
-
-(defun %classify-point (shape node windings)
-  (flet ((py (y prev)
-           (etypecase prev
-             (point
-              (p-y prev))
-             (segment
-              (s-y1 prev))
-             (bezier2
-              (if (= y (b2-yc prev))
-                  (b2-y1 prev)
-                  (b2-yc prev)))))
-         (ny (y next)
-           (etypecase next
-             (point
-              (p-y next))
-             (segment
-              (s-y2 next))
-             (bezier2
-              (if (= y (b2-yc next))
-                  (b2-y2 next)
-                  (b2-yc next)))))
-         (s (y iter yp)
-           (loop for p = (funcall iter shape node) then (funcall iter shape p)
-                 while (= (funcall yp y p) y)
-                 when (eql p node)
-                   do (format t "bad contour?~%")
-                      (map-contour-segments
-                       shape (lambda (a b c)
-                               (format t " ~s ~s ~s~%" a c b)))
-                      (error "couldn't find edge with different Y, degenerate contour?")
-                 finally (return p))))
-    (let* ((y (p-y node))
-           ;; find next Y values in either direction that differ from
-           ;; this one
-           (prev (s y #'prev #'py))
-           (next (s y #'next #'ny))
-           (py (py y prev))
-           (ny (ny y next))
-           (flat (= y (py y (prev shape node)))))
-      ;; if point is at end of a horizontal segment, we might
-      ;; need to ignore it depending on surrounding shape.
-
-      ;; if a horizontal segment is exactly on a sample line,
-      ;; it doesn't matter if it is counted as interior or
-      ;; exterior, since that will only be used to set sign of
-      ;; a distance that will be 0 since it is sampled exactly
-      ;; on that segment.
-
-      ;; In that case we only need to be careful about how
-      ;; many transitions are added by the points adjacent to
-      ;; that segment. If the segment is a local extreme
-      ;; (shape continues upwards on both ends, or downwards
-      ;; on both ends) then we need exactly 0 or 2 transitions
-      ;; (corresponding to samples on segment being exterior
-      ;; or interior). If it is an inflection point (shape
-      ;; continues upwards on one side and downwards on
-      ;; other), we need exactly 1 transition to get the right
-      ;; results from non-zero fill rule. We arbitrarily pick
-      ;; the start point of the segment in that case so we
-      ;; only need to test the end point.
-      (let ((w (cond
-                 ((<= py y ny) (if flat nil :cw))
-                 ((>= py y ny) (if flat nil :ccw))
-                 (t :both))))
-        (setf (gethash node windings) w)))))
-
-(defun %classify-segment (shape node windings)
-  (declare (ignorable shape))
-  (let ((y1 (s-y1 node))
-        (y2 (s-y2 node)))
-    (setf (gethash node windings)
-          (if (or (> y2 y1)
-                  (and (= y1 y2)
-                       (> (s-x2 node) (s-x1 node))))
-              :cw :ccw))))
-
-(defun %classify-bezier2 (shape node windings)
-  (declare (ignorable shape))
-  (let ((y1 (b2-y1 node))
-        (yc (b2-yc node))
-        (y2 (b2-y2 node)))
-    (setf (gethash node windings)
-          (cond
-            ;; completely flat should have been converted to segment
-            ((= y1 yc y2)
-             (break "degenerate bezier ~,3f,~,3f ~,3f,~,3f ~,3f,~,3f"
-                    (b2-x1 node) (b2-y1 node)
-                    (b2-xc node) (b2-yc node)
-                    (b2-x2 node) (b2-y2 node)))
-            ;; non-decreasing Y = CW
-            ((<= y1 yc y2) :cw)
-            ;; non-increasing Y = CCW
-            ((>= y1 yc y2) :ccw)
-            ;; otherwise we have an inflection point, and might be
-            ;; both CW and CCW for a particular scan-line
-            (t :both)))))
-
-(defun classify-shape-windings (shape)
-  (let ((windings (make-hash-table)))
-    (flet ((classify-node (c# node endp)
-             (declare (ignore c# endp))
-             (etypecase node
-               (point
-                (%classify-point shape node windings))
-               (segment
-                (%classify-segment shape node windings))
-               (bezier2
-                (%classify-bezier2 shape node windings)))))
-      (map-contour-segments shape #'classify-node))
-    windings))
-
 #++
 (defmethod update-instance-for-different-class :after ((old shape)
                                                        (new indexed-shape)

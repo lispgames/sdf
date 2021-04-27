@@ -76,11 +76,10 @@
          (start-edges nil)
          (shape (check-shape (clean-shape (shape sdf))))
          (image (image sdf))
-         #++(windings (classify-shape-windings shape))
          (scans (sample-ys sdf))
          (last-j nil))
     #++
-    (progn
+    (progn 
       (setf scans (copy-seq scans))
       (loop for i from 0
             for y across scans
@@ -94,9 +93,6 @@
               x0 y0
               (+ x0 (* dx (array-dimension image 1)))
               (+ y0 (* dy (array-dimension image 0)))))
-    #++(loop for j below (length scans)
-             do (setf (aref scans j)
-                      (+ y0 (* dy j))))
     (when *dump-mask*
       (format t "scans =~%")
       (loop for y across scans for j from 0
@@ -219,10 +215,6 @@
              (add-x (j x dir)
                (when *dump-mask*
                  (format t "add-x ~s ~s j=~s (~s)~%" x dir j last-j))
-               #++(when last-j
-                    (ecase dir
-                      (:up (assert (<= last-j j (1+ last-j))))
-                      (:down (assert (>= (1+ last-j) j last-j)))))
                (push (list dir x) (aref tmp-edges j))
                (setf last-j j))
              (dir (y1 y2)
@@ -461,7 +453,6 @@
     ;; of doubles so we can store integer values in bmfont files
     ;; without rounding
     (error "todo: integer-offset"))
-  #++(setf scale (float scale 1d0))
   (destructuring-bind (wx wy) (calculate-size shape spread scale)
     (let* (#++(bounds (bounding-box shape))
            (rbounds (rbounding-box shape))
@@ -504,22 +495,6 @@
                             (* j (- scale)))
                        y))
 
-
-      #++
-      ;; draw points into image for debugging
-      (loop for c across (sdf/base::contours shape)
-            do (loop with n = c
-                     do (typecase n
-                          (sdf/base::point
-                           (let* ((p (v2+ (v2scale  (v2h* (p-v n) (v2 1 -1))
-                                                    (/ scale))
-                                          (v2 ox oy)))
-                                  (x (floor (vx p)))
-                                  (y (floor (vy p))))
-                             (when (array-in-bounds-p image y x 0)
-                               (incf (aref image y x 0) 0.3)))))
-                        (setf n (sdf/base::next shape n))
-                     until (eql n c)))
       (let ((sdf (make-instance 'sdf :spread spread :sdf-type type
                                      :shape shape
                                      :pixel-scale scale :origin (v2 ox oy)
