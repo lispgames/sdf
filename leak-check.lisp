@@ -58,7 +58,7 @@
                            (setf (gethash
                                   (list
                                    font collection index scale spread
-                                   (b::serialize-shape shape)
+                                   (b::serialize-shape shape :allow-ratios t)
                                    )
                                   *failures*)
                                  err))
@@ -66,7 +66,8 @@
                            (incf c3)
                            (setf (gethash (list
                                            font collection index scale spread
-                                           (b::serialize-shape shape)
+                                           (b::serialize-shape shape
+                                                               :allow-ratios t)
                                            (b::origin sdf))
                                           *failures*)
                                  :leaks)))))))))
@@ -93,10 +94,9 @@
 (leak-test-file "c:/windows/fonts/arial.ttf" 56 3)
 #++ *failures*
 #++ *shape-failures*
-
 #++
-(loop for d in (append (directory "c:/Windows/fonts/*.ttf")
-                       (directory "c:/Windows/fonts/*.ttc")
-                       (directory "d:/dl/fonts/*.ttf")
-                       (directory "d:/dl/fonts/*.ttc"))
+(loop for d in (reverse (append (directory "c:/Windows/fonts/*.ttf")
+                        (directory "c:/Windows/fonts/*.ttc")
+                        (directory "d:/dl/fonts/*.ttf")
+                        (directory "d:/dl/fonts/*.ttc")))
       do (leak-test-file d 56 3))

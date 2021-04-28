@@ -500,14 +500,14 @@
            (assert (eql (type-of prev) 'v:point)))
   shape)
 
-(defun serialize-shape (shape)
+(defun serialize-shape (shape &key allow-ratios)
   (with-output-to-string (s)
     (flet ((p (p)
              (format s "~s, ~s"
-                     (if (integerp (p-rx p))
+                     (if (or (integerp (p-rx p)) allow-ratios)
                          (p-rx p)
                          (p-dx p))
-                     (if (integerp (p-ry p))
+                     (if (or (integerp (p-ry p)) allow-ratios)
                          (p-ry p)
                          (p-dy p)))))
       (let ((prev-contour nil))
@@ -542,7 +542,7 @@
                (number ()
                  (let ((x (loop for n = (peek-char t s)
                                 while (or (digit-char-p n)
-                                          (position n "+-.edsf"
+                                          (position n "+-.edsf/"
                                                     :test 'char-equal))
                                 collect (read-char s))))
                    (when x (parse-number:parse-number (coerce x 'string)))))
