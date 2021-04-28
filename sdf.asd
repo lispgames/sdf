@@ -9,6 +9,7 @@
                (:file "v2")
                (:file "geometry")
                (:file "shape")
+               (:file "shapedesc")
                (:file "sdf-base")
                (:file "sdf")))
 
