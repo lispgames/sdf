@@ -351,7 +351,9 @@
                               for (tt flag j) in s
                               do (when (or (< pt st tt)
                                            (= st tt))
-                                   (finish-section t end))
+                                   ;; we have more to add, so this
+                                   ;; part isn't the 'end' yet
+                                   (finish-section t nil))
                                  (unless (eq flag :extreme)
                                    (when (<= 0 tt 1)
                                      (add-x j (x tt) (if (<= tt st) d1 d2))))))
