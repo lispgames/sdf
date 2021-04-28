@@ -225,6 +225,26 @@
                  do (funcall function c# n end)
                  until end)))
 
+(defun transpose-shape (in)
+  (let ((start t))
+    (with-shape-builder (shape)
+      (map-contour-segments
+       in (lambda (c n e)
+            (declare (ignore c))
+            (when start
+              (setf start nil)
+              ;; contour should always start with a point
+              (start-contour (p-ry n) (p-rx n)))
+            (etypecase n
+              (point)
+              (segment (line-to (s-ry2 n) (s-rx2 n)))
+              (bezier2 (quadratic-to
+                        (b2-ryc n) (b2-rxc n)
+                        (b2-ry2 n) (b2-rx2 n))))
+            (when e
+              (setf start t)
+              (end-contour)))))))
+
 
 (defun clean-shape (shape &key (verbose *dump*))
   ;; return a copy of SHAPE with degenerate contours, curves,

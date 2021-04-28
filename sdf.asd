@@ -3,7 +3,7 @@
   :version "0.0.1"
   :author "Bart Botta <00003b at gmail.com>"
   :license "MIT"
-  :depends-on (cl-vectors cl-paths cl-aa cl-aa-misc)
+  :depends-on (cl-vectors cl-paths cl-aa cl-aa-misc parse-number)
   :serial t
   :components ((:file "packages-base")
                (:file "v2")
@@ -11,6 +11,7 @@
                (:file "shape")
                (:file "shapedesc")
                (:file "sdf-base")
+               (:file "edge-list")
                (:file "sdf")))
 
 (asdf:defsystem :sdf/ttf
@@ -46,8 +47,9 @@
 
 
 (defsystem sdf/test
-  :depends-on (3b-mmath parachute)
+  :depends-on (3b-mmath parachute md5)
   :serial t
   :perform
   (asdf:test-op (op c) (uiop:symbol-call :parachute :test :sdf/test))
-  :components ((:file "tests")))
+  :components ((:file "tests")
+               (:file "leak-check")))

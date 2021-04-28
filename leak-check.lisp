@@ -1,3 +1,5 @@
+#++
+(ql:quickload 'sdf-test)
 (defpackage #:sdf-leak-test
   (:use :cl)
   (:local-nicknames (:a :alexandria-2)
@@ -27,8 +29,10 @@
   (let ((c1 0)
         (c2 0)
         (c3 0)
-        (c0 0))
+        (c0 0)
+        (ncol 0))
     (zpb-ttf:with-font-loader (ttf font :collection-index collection)
+      (setf ncol (zpb-ttf:collection-font-count ttf))
       (loop for index below (zpb-ttf:glyph-count ttf)
             for g = (zpb-ttf:index-glyph index ttf)
             when (zerop (mod index 100))
@@ -57,9 +61,8 @@
                            (incf c2)
                            (setf (gethash
                                   (list
-                                   font collection index scale spread
-                                   (b::serialize-shape shape :allow-ratios t)
-                                   )
+                                   font collection index scale spread nil
+                                   (b::serialize-shape shape :allow-ratios t))
                                   *failures*)
                                  err))
                           ((not (check-leaks sdf))
@@ -72,9 +75,11 @@
                                           *failures*)
                                  :leaks)))))))))
       (if (= 0 c1 c2 c3)
-          (format t "~&~s ok (~s)~%" font c0)
-          (format t "~&~s:~%!!!errors: ~s ~s ~s / ~s~%" font c1 c2 c3 c0))
+          (format t "~&~s ~s/~s ok (~s)~%" font collection ncol c0)
+          (format t "~&~s ~s/~s:~%!!!errors: ~s ~s ~s / ~s~%"
+                  font collection ncol c1 c2 c3 c0))
       (list  c0 c1 c2 c3))))
+
 
 (defun leak-test-file (font size spread)
   (multiple-value-bind (collections err)
@@ -92,7 +97,7 @@
 (leak-test-file "d:/dl/fonts/Bravura.ttf" 56 3)
 #++
 (leak-test-file "c:/windows/fonts/arial.ttf" 56 3)
-#++ *failures*
+#++ *failures* 9
 #++ *shape-failures*
 #++
 (loop for d in (reverse (append (directory "c:/Windows/fonts/*.ttf")
@@ -100,3 +105,38 @@
                         (directory "d:/dl/fonts/*.ttf")
                         (directory "d:/dl/fonts/*.ttc")))
       do (leak-test-file d 56 3))
+
+(defun save-regressions (file)
+  (let ((h (make-hash-table :test 'equalp)))
+    (flet ((hash (x)
+             (destructuring-bind (f c i scale spread origin s)
+                 x
+               ;; font,collection,index are just for reference, we
+               ;; only care about other args for regression testing
+               ;; (and don't care about same shape from multiple
+               ;; files)
+               (declare (ignore f c i))
+               (format nil "~(~{~2,'0X~}~)"
+                       (coerce
+                        (md5:md5sum-string
+                         (format nil "~s ~s ~s ~s" scale spread origin s))
+                        'list)))))
+      (when (probe-file file)
+        (with-open-file (f file :direction :input)
+          (loop for x = (read f nil f)
+                until (eq x f)
+                do (let ((hh (hash x)))
+                     (when (gethash hh h)
+                       (format t "duplicate hash ~s?~%  ~s~%"
+                               hh x))
+                     (setf (gethash hh h) t)))))
+      (with-open-file (f file :direction :output
+                              :if-does-not-exist :create
+                              :if-exists :append)
+        (loop for i in (a:hash-table-keys *failures*)
+              for hh = (hash i)
+              unless (gethash hh h)
+                do (print i f)
+                   (setf (gethash hh h) t))))))
+#++
+(save-regressions "c:/tmp/sdf-leak-test-regressions.lisp")
