@@ -27,7 +27,7 @@
    (pixel-scale :reader pixel-scale :initform (v2 1 1) :initarg :pixel-scale)
    ;; position of origin of SHAPE coordinate system relative to center
    ;; of upper left pixel of IMAGE, in pixels
-   (origin :initform (v2 0 0) :reader origin :initarg :origin)
+   (origin :initform (rv2 0 0) :reader origin :initarg :origin)
    ;; distance in pixels corresponding to a pixel value of 0 (=
    ;; maximum representable distance in distance field)
    (spread :initform 2.5 :reader spread :initarg :spread)))

@@ -47,9 +47,10 @@
 
 
 (defsystem sdf/test
-  :depends-on (3b-mmath parachute md5)
+  :depends-on (sdf parachute md5 float-features)
   :serial t
   :perform
   (asdf:test-op (op c) (uiop:symbol-call :parachute :test :sdf/test))
   :components ((:file "tests")
-               (:file "leak-check")))
+               (:file "leak-check")
+               (:file "edge-test")))

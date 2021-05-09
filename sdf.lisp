@@ -71,12 +71,9 @@
     (when render
       (loop with wy = (array-dimension image 0)
             for j below wy
-            ;; sample sdf at pixel centers
-            for y = (* (- (vy origin) 0.5 j)
-                       scale)
+            for y across (samples/y sdf)
             do (loop for i below (array-dimension image 1)
-                     for x = (* (- (+ i 0.5) (vx origin))
-                                scale)
+                     for x across (samples/x sdf)
                      do (setf (aref image j i 0)
                               (float
                                (* (if (zerop (aref signs j i)) -1 1)
@@ -119,6 +116,28 @@
                    do (setf (aref mask j x) in)))
     mask))
 
+(defun make-transpose-mask (wx wy sx sy edge-list)
+  ;; mostly for testing, don't think this will be needed in practice
+  ;; (only calculate the vertical edge list to detect undersampled
+  ;; stems/gaps)
+  (let ((tmask (make-mask wy wx (reverse sy) (reverse sx) edge-list))
+        (mask (make-array (list wy wx) :element-type 'bit :initial-element 0)))
+    (loop for j below wy
+          do (loop for i below wx
+                   do (setf (aref mask j i)
+                            (aref tmask i (- wy j 1)))))
+    mask))
+
+(defun make-transpose-mask-for-sdf (sdf)
+  (let* ((mask1 (signs sdf))
+         (s2 (transpose-shape (cleaned-shape sdf)))
+         (wy (array-dimension mask1 0))
+         (wx (array-dimension mask1 1)))
+    (make-transpose-mask wx wy
+                         (samples/y sdf)
+                         (samples/y sdf)
+                         (%make-edge-list s2 (samples/x sdf)))))
+
 (defun make-sdf (type shape &key (spread 2.5) (scale 1) integer-offset
                               (render t) origin)
   (when integer-offset
@@ -150,8 +169,7 @@
            (clean-shape (clean-shape shape)))
       (when origin
         (setf ox (aref origin 0))
-        (setf oy (aref origin 1))
-        )
+        (setf oy (aref origin 1)))
       (loop for j below (length samples/y)
             do (setf (aref samples/y j)
                      (+ (* (- oy 1/2) scale)

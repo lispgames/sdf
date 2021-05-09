@@ -30,6 +30,9 @@
            (when end
              (format s "# }~%"))))))))
 
+(defparameter *dump-parse* nil)
+#++ (setf *dump-parse* t)
+
 (defun parse-shape (str)
   (with-input-from-string (s str)
     (with-shape-builder (shape)
@@ -44,7 +47,10 @@
                                           (position n "+-.edsf/"
                                                     :test 'char-equal))
                                 collect (read-char s))))
-                   (when x (parse-number:parse-number (coerce x 'string)))))
+                   (when x
+                     (when *dump-parse*
+                       (format t "   number = ~s~%" x))
+                     (parse-number:parse-number (coerce x 'string)))))
                (c (x)
                  (let ((n (peek-char t s)))
                    (when (char= n x)
@@ -65,15 +71,21 @@
                        (unless b
                          (error "expected number after ~s while parsing point?"
                                 a))
+                       (when *dump-parse*
+                         (format t "   pair = ~s ~s~%" a b))
                        (list :p a b)))))
                (control ()
                  (when (\()
+                   (when *dump-parse*
+                     (format t " ("))
                    (let ((c1 (pair))
                          (c2 (when (\;)
                                (pair))))
                      (unless (\))
-                       (error "expected ) after reading control point ~s,~s?"
-                              c1 c2))
+                       (error "expected ) after reading control point ~s,~s?~% got ~s"
+                              c1 c2 (peek-char nil s)))
+                     (when *dump-parse*
+                       (format t "   control = ~s ~s~%" c1 c2))
                      (list :control c1 c2))))
                (contour ()
                  (when (peek-char t s nil nil)
@@ -86,6 +98,7 @@
                            with color = nil
                            for s = (\;)
                            for (x . p) = (or (pair) (control) (color) (\#))
+                           while x
                            do (case x
                                 ((or :p :hash)
                                  (when (eql x :hash)

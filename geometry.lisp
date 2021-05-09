@@ -127,6 +127,11 @@
   (c1 (make-point) :type point)
   (p2 (make-point) :type point))
 
+(defun make-bezier2 (x1 y1 xc yc x2 y2)
+  (%make-bezier2 (make-point x1 y1)
+                 (make-point xc yc)
+                 (make-point x2 y2)))
+
 (defun b2-rx1 (b) (p-rx (b2-p1 b)))
 (defun b2-ry1 (b) (p-ry (b2-p1 b)))
 (defun b2-rxc (b) (p-rx (b2-c1 b)))
@@ -158,12 +163,14 @@
   (coerce (v2dist v (p-dv p)) 'single-float))
 
 
-(defun dist/v2-line/sf (v s)
+(declaim (inline dist/v2-line*/sf))
+(defun dist/v2-line*/sf (v e1 e2)
   (declare (optimize speed))
-  (check-type s segment)
   (check-type v v2)
-  (let* ((p0 (p-dv (s-p1 s)))
-         (n (v2- (p-dv (s-p2 s)) p0))
+  (check-type e1 v2)
+  (check-type e2 v2)
+  (let* ((p0 e1)
+         (n (v2- e2 p0))
          (l (v2. n n))
          (tt (/ (v2. (v2- v p0) n)
                 l))
@@ -173,6 +180,12 @@
      (* (if (plusp sig) 1 -1)
         (v2dist v pp))
      'single-float)))
+
+(defun dist/v2-line/sf (v s)
+  (declare (optimize speed))
+  (check-type s segment)
+  (check-type v v2)
+  (dist/v2-line*/sf v (s-p1 s) (s-p2 s)))
 
 (defun dist/v2-segment/sf (v s)
   (declare (optimize speed))
@@ -189,63 +202,90 @@
        (v2dist v pp)
        'single-float))))
 
+(defvar *dump-distance* nil)
+
+(declaim (inline solve-quadratic))
+(defun solve-quadratic (a b c)
+  ;; http://www.numerical.recipes/ ch 5.6
+  (let ((d (- (expt b 2) (* 4 a c))))
+    (cond
+      ((minusp d)
+       (values))
+      ((zerop a) ;; linear, bx+c=0, bx=-c,
+       (- (/ c b)))
+      ((zerop d)
+       (/ b (* -2 a)))
+      (t
+       (let ((q (* -1/2 (+ b (* (signum b) (sqrt d))))))
+         (values (/ q a) (/ c q)))))))
+
+(defun solve-quadratic-cubic (io)
+  (multiple-value-bind (a b) (solve-quadratic (aref io 1)
+                                              (aref io 2)
+                                              (aref io 3))
+    (return-from solve-quadratic-cubic
+      (cond
+        (b
+         (setf (aref io 0) a)
+         (setf (aref io 1) b)
+         2)
+        (a
+         (setf (aref io 0) a)
+         1)
+        (t 0)))))
+
+
 (defun solve-cubic (io)
+  ;; http://www.numerical.recipes/ ch 5.6
   (declare (type (simple-array double-float (4)) io)
            (optimize speed))
-  (let* ((a (aref io 0))
-         (b (aref io 1))
-         (c (aref io 2))
-         (d (aref io 3))
-         (bc (* b c))
-         (ad (* a d))
-         (abc (* a bc))
-         (abcd (* ad bc))
-         (b3 (expt b 3))
-         (det (+ (* 18 abcd)
-                 (* -4 b3 d)
-                 (* bc bc)
-                 (* -4 a (expt c 3))
-                 (* -27 ad ad)))
-         (det0 (+ (expt b 2)
-                  (* -3 a c))))
+  ;; a=0, actually a quadratic
+  (when (zerop (aref io 0))
+    (return-from solve-cubic (solve-quadratic-cubic io)))
+  (let* ((a0 (aref io 0))
+         (b0 (aref io 1))
+         (c0 (aref io 2))
+         (d0 (aref io 3))
+         (a (/ b0 a0))
+         (b (/ c0 a0))
+         (c (/ d0 a0))
+         (q (/ (- (expt a 2)
+                  (* 3 b))
+               9))
+         (r (/ (+ (* 2 (expt a 3))
+                  (* -9 a b)
+                  (* 27 c))
+               54))
+         (r2 (expt r 2))
+         (q3 (expt q 3)))
+    (declare (type double-float a0 b0 c0 d0 a b c q r r2 q3))
     (cond
-      ((and (zerop det) (zerop det0))
-       (let ((r io))
-         (setf (aref r 0)
-               (if (zerop a)
-                   0d0
-                   (/ b (* -3 a))))
-         r
-         1))
-      ((zerop det)
-       (let ((r io))
-         (setf (aref r 0) (/ (- (* 9 ad) bc)
-                             (* 2 det0))
-               (aref r 1) (/ (- (* 4 abc) (* 9 a ad) b3)
-                             (* a det0)))
-         r
-         2))
+      ((< r2 q3)
+       ;; r2 is (expt real 2) so >= 0, so q3 is >= 0, so q is >= 0
+       (locally (declare (type (double-float 0d0) r2 q3 q))
+         (let* ((r/rq3 (/ r (sqrt q3)))
+                (th/3 (/ (acos r/rq3)
+                         3))
+                (a/3 (/ a 3))
+                (-2rq (* -2 (sqrt q)))
+                (2pi/3 (* pi 2/3)))
+           (declare (type (double-float -1d0 1d0) r/rq3))
+           (setf (aref io 0) (- (* -2rq (cos th/3)) a/3))
+           (setf (aref io 1) (- (* -2rq (cos (+ th/3 2pi/3))) a/3))
+           (setf (aref io 2) (- (* -2rq (cos (- th/3 2pi/3))) a/3))
+           3)))
       (t
-       (let* ((det1 (+ (* 2 b3) (* -9 abc) (* 27 a ad)))
-              (pm (sqrt (* -27 a a det)))
-              (cc (expt
-                   (/ (if (= det1 pm)
-                          (+ det1 pm)
-                          (- det1 pm))
-                      2)
-                   1/3))
-              (xi (+ -1/2 (/ #c(0 #.(sqrt 3)) 2)))
-              (c 0))
-         (loop for k upto 2
-               for r = (* (/ (* -3 a))
-                          (+ b
-                             (* (expt xi k) cc)
-                             (/ det0 (* (expt xi k) cc))))
-               when (and (< (abs (imagpart r)) 0.001)
-                         (< 0 (realpart r) 1))
-                 do (setf (aref io c) (realpart r))
-                    (incf c))
-         c)))))
+       (let* ((r2-q3 (- r2 q3))
+              (aa (* (- (signum r))
+                     (expt (+ (abs r)
+                              (sqrt r2-q3))
+                           1/3)))
+              (bb (if (zerop aa) 0d0 (/ q aa))))
+         ;; r2>=r3, so r2-r3 is >=0
+         (declare (type (double-float 0d0) r2-q3))
+         (setf (aref io 0) (+ aa bb (/ a -3)))
+         1)))))
+
 
 (defun dist/v2-bezier2/sf (p c)
   (declare (optimize speed))
@@ -254,19 +294,30 @@
   (let* ((p0 (p-dv (b2-p1 c)))
          (p1 (p-dv (b2-c1 c)))
          (p2 (p-dv (b2-p2 c)))
-         (d (v2- p p0))
+         (d (v2- p0 p))
          (d1 (v2- p1 p0))
-         (d2 (v2- p2 (v2- (v2scale p1 2) p0)))
+         ;(d2 (v2- p2 (v2- (v2scale p1 2) p0)))
+         (d2 (v2+ p0 (v2+ (v2scale p1 -2) p2)))
+         ;; s1 = a = (p0 - 2p1 + p2) . (p0 - 2p1 + p2) = d2 . d2
          (s1 (v2. d2 d2))
+         ;; s2 = b = 3 ((p0 - 2p1 + p2) . (p1 - p0)) = 3(d2 . d1)
          (s2 (* 3 (v2. d1 d2)))
+         ;; c = ((p0 - 2p1 + p2) . (p0 - p)) + 2((p1-p0).(p1-p0)))
+         ;;   = 3(d2 . d) + 2(d1 . d1)
          (s3 (* 2 (v2. d1 d1)))
+         ;; d = (p0-p).(p0-p) = d.d
          (abcd (make-array 4 :element-type 'double-float
                              :initial-contents
-                             (list s1 s2 (- s3 (v2. d2 d))
-                                   (* -1 (v2. d1 d)))))
+                             (list s1
+                                   s2
+                                   (+ s3 (v2. d2 d))
+                                   (v2. d1 d))))
          (roots (solve-cubic abcd)))
     (declare (type (and unsigned-byte fixnum) roots)
              (dynamic-extent abcd))
+    (when *dump-distance*
+      (format t "roots = ~s, abcd=~s~%" roots abcd))
+
     (flet ((eval-curve (at)
              (v2+ (v2+ (v2scale d2 (* at at))
                        (v2scale d1 (* 2 at)))
@@ -274,7 +325,18 @@
       (declare (inline eval-curve))
       (loop for r double-float across abcd
             repeat roots
-            for b = (eval-curve r)
-            for d double-float = (v2dist p b)
-            minimize d into dd double-float
+            when (< 0 r 1)
+              minimize (v2dist p (eval-curve r)) into dd double-float
             finally (return (coerce dd 'single-float))))))
+
+
+
+(defun eval-at/b2 (b at)
+  (let* ((p0 (p-rv (b2-p1 b)))
+         (p1 (p-rv (b2-c1 b)))
+         (p2 (p-rv (b2-p2 b)))
+         (d1 (rv2- p1 p0))
+         (d2 (rv2+ p0 (rv2+ (rv2scale p1 -2) p2))))
+    (rv2+ (rv2+ (rv2scale d2 (* at at))
+                (rv2scale d1 (* 2 at)))
+          p0)))

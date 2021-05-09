@@ -246,6 +246,49 @@
               (end-contour)))))))
 
 
+(defun coerce-shape (in element-type)
+  (let ((start t))
+    (flet ((d (x) (coerce x element-type)))
+     (with-shape-builder (shape)
+       (map-contour-segments
+        in (lambda (c n e)
+             (declare (ignore c))
+             (when start
+               (setf start nil)
+               ;; contour should always start with a point
+               (start-contour (d (p-rx n)) (d (p-ry n))))
+             (etypecase n
+               (point)
+               (segment (line-to (d (s-rx2 n)) (d (s-ry2 n))))
+               (bezier2 (quadratic-to
+                         (d (b2-rxc n)) (d (b2-ryc n))
+                         (d (b2-rx2 n)) (d (b2-ry2 n)))))
+             (when e
+               (setf start t)
+               (end-contour))))))))
+
+(defun translate-shape (in dx dy)
+  ;; offset should probably be a option to parse-shape?
+  (let ((start t))
+    (with-shape-builder (shape)
+      (map-contour-segments
+       in (lambda (c n e)
+            (declare (ignore c))
+            (when start
+              (setf start nil)
+              ;; contour should always start with a point
+              (start-contour (+ (p-rx n) dx) (+ (p-ry n) dy)))
+            (etypecase n
+              (point)
+              (segment (line-to (+ (s-rx2 n) dx) (+ (s-ry2 n) dy)))
+              (bezier2 (quadratic-to
+                        (+ (b2-rxc n) dx) (+ (b2-ryc n) dy)
+                        (+ (b2-rx2 n) dx) (+ (b2-ry2 n) dy))))
+            (when e
+              (setf start t)
+              (end-contour)))))))
+
+
 (defun clean-shape (shape &key (verbose *dump*))
   ;; return a copy of SHAPE with degenerate contours, curves,
   ;; segments, and points removed
@@ -271,7 +314,16 @@
                  (or (and (= x1 xc) (= y1 yc))
                      (and (= xc x2) (= yc y2))
                      (= x1 xc x2)
-                     (= y1 yc y2)))))
+                     (= y1 yc y2)
+                     ;; also consider it flat if control point is
+                     ;; within some small amount of line containing
+                     ;; end points
+                     (< (abs (dist/v2-line*/sf (p-dv (b2-c1 n))
+                                               (p-dv (b2-p1 n))
+                                               (p-dv (b2-p2 n))))
+                        (* single-float-epsilon
+                           (min (abs (- x1 x2))
+                                (abs (- y1 y2)))))))))
            (empty-seg (n)
              (when (typep n 'segment)
                (and (= (s-rx1 n) (s-rx2 n))

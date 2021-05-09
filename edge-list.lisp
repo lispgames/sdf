@@ -72,6 +72,7 @@
                  (assert extreme)
                  (when *dump-mask*
                    (format t "-- save edges for later ~s~%" tmp-edges))
+                 (setf last-j nil)
                  (setf start-edges (copy-seq tmp-edges))
                  (fill tmp-edges nil)
                  (return-from finish-section nil))
@@ -127,7 +128,7 @@
                        do (error "couldn't find previous Y value?")))
              (add-x (j x dir)
                (when *dump-mask*
-                 (format t "add-x ~s ~s j=~s (~s)~%" x dir j last-j))
+                 (format t " add-x ~s ~s j=~s (~s)~%" x dir j last-j))
                (push (list dir x) (aref tmp-edges j))
                (setf last-j j))
              (dir (y1 y2)
@@ -168,17 +169,28 @@
                          (finish-section t end)))))
                    (t
                     ;; normal segment, add samples for all spans it crosses
-                    (loop with dir = (dir y1 y2)
-                          with x1 = (s-rx1 n)
-                          with x2 = (s-rx2 n)
-                          with s = (/ (- x2 x1)
-                                      (- y2 y1))
-                          ;; fixme: don't search entire range
-                          for y across scans
-                          for j from 0
-                          when (or (<= y1 y y2)
-                                   (>= y1 y y2))
-                            do (add-x j (+ x1 (* s (- y y1))) dir))))
+                    (let ((dir (dir y1 y2))
+                          (l (1- (length scans))))
+                      (destructuring-bind (j1 dj j2)
+                          (if (= (signum (- (aref scans 0) (aref scans 1)))
+                                 (signum (- y1 y2)))
+                              (list 0 1 l)
+                              (list l -1 0))
+                        (when *dump-mask*
+                          (format t "  scans = ~,3f, ~,3f,...~%"
+                                  (aref scans 0) (aref scans 1))
+                          (format t "  j1 = ~s, dj = ~s, j2 = ~s~%" j1 dj j2))
+                        (loop with x1 = (s-rx1 n)
+                              with x2 = (s-rx2 n)
+                              with s = (/ (- x2 x1)
+                                          (- y2 y1))
+                              ;; fixme: don't search entire range
+                              for j = j1 then (+ j dj)
+                              for y = (aref scans j)
+                              when (or (<= y1 y y2)
+                                       (>= y1 y y2))
+                                do (add-x j (+ x1 (* s (- y y1))) dir)
+                              until (= j j2))))))
                  (when end
                    (finish-section nil end))))
              (split-b (b)
@@ -218,10 +230,16 @@
                                   (lerp st y1 yc)
                                   (lerp st yc y2))))
                       (samples nil))
+                 (when *dump-mask*
+                   (format t "  a=~s, st=~s, sy=~s~%" a st sy))
                  (loop
                    ;; fixme: don't search entire range
                    for y across scans
                    for j from 0
+                   for up1 = (or (< y1 yc)
+                                 (and (= y1 yc) (< y1 y2)))
+                   for up2 = (or (< y2 yc)
+                                 (and (= y2 yc) (> y1 y2)))
                    when (<= (min y1 yc y2) y (max y1 yc y2))
                      do (if (zerop a)
                             ;; simpler case, t->y is linear
@@ -242,17 +260,41 @@
                                  (let* ((r (sqrt (float disc 1d0)))
                                         (t1 (/ (- -b r) 2a))
                                         (t2 (/ (+ -b r) 2a)))
-                                   (push (list t1 :normal j) samples)
-                                   (push (list t2 :normal j) samples)))))))
+                                   (when *dump-mask*
+                                    (unless (<= 0 t1 1)
+                                      (format t " drop1 ~s @ ~s~%" t1 j))
+                                    (unless (<= 0 t2 1)
+                                      (format t " drop2 ~s @ ~s~%" t2 j)))
+                                   (when (<= 0 t1 1)
+                                     (push (list t1 :normal j) samples))
+                                   (when (<= 0 t2 1)
+                                     (push (list t2 :normal j) samples))))))))
                  (flet ((x (at)
                           (lerp at
                                 (lerp at x1 xc)
                                 (lerp at xc x2))))
                    (let ((s (sort samples '< :key 'car)))
+                     (when *dump-mask*
+                       (format t "  samples=~s~%" s))
+                     ;; make sure we don't skip a sample at beginning
+                     ;; due to FP loss (if endpoint is exactly on a
+                     ;; sample, we calculate T just outside 0..1
+                     ;; sometimes)
+                     (when (and s last-j)
+                       (let ((j1 (third (car s))))
+                         (when (> (abs (- j1 last-j))
+                                  1)
+                           (when *dump-mask*
+                            (format t "$$$$ add endpoint at skip: ~s - ~s~%"
+                                    last-j j1))
+                           (add-x (if (> j1 last-j) (1+ last-j) (1- last-j))
+                                  x1 (if (= y1 yc) (dir y1 y2) (dir y1 yc))))))
                      (cond
                        ((and st (not s))
                         ;; had an extreme point, but curve was
                         ;; entirely between samples, finish section
+                        (when *dump-mask*
+                          (format t "  finish section 1~%"))
                         (finish-section t end))
                        (st
                         ;; we have an extreme point, so need to finish
@@ -260,26 +302,35 @@
                         (loop with d1 = (dir y1 sy)
                               with d2 = (dir sy y2)
                               for pt = -1 then tt
-                              for (tt flag j) in s
+                              for ((tt flag j) . more) on s
                               do (when (or (< pt st tt)
                                            (= st tt))
                                    ;; we have more to add, so this
                                    ;; part isn't the 'end' yet
+                                   (when *dump-mask*
+                                     (format t "  finish section 2~%"))
                                    (finish-section t nil))
                                  (unless (eq flag :extreme)
-                                   (when (<= 0 tt 1)
-                                     (add-x j (x tt) (if (<= tt st) d1 d2))))))
+                                   (progn ;when (<= 0 tt 1)
+                                     (add-x j (x tt) (if (<= tt st) d1 d2))))
+                                 (when (and (< tt st)
+                                            (not more))
+                                   (when *dump-mask*
+                                     (format t "  finish 3 @  ~f ~f ~s~%" tt st more))
+                                   (finish-section t nil))))
                        (t
                         ;; no extreme, just add all the points
                         (loop with dir = (dir y1 y2)
                               for (tt flag j) in s
                               for x = (x tt)
-                              do (when (<= 0 tt 1)
+                              do (progn ;when (<= 0 tt 1)
                                    (assert (or (not (eq flag :extreme))
                                                (= 0 tt)
                                                (= 1 tt)))
                                    (add-x j (x tt) dir))))))))
                (when end
+                 (when *dump-mask*
+                   (format t "  finish section 4~%"))
                  (finish-section nil t)))
 
              (add (n e)
@@ -314,7 +365,10 @@
                  (when e (format t "     = ~s~%" e))))
 
       edges)))
-#++
 (defun make-edge-list (sdf)
   (%make-edge-list (cleaned-shape sdf)
                    (samples/y sdf)))
+
+(defun make-transpose-edge-list (sdf)
+  (%make-edge-list (transpose-shape (cleaned-shape sdf)) (samples/x sdf))
+)
