@@ -1,34 +1,53 @@
 (in-package #:sdf/base)
-(defun serialize-shape (shape &key allow-ratios)
-  (with-output-to-string (s)
-    (flet ((p (p)
-             (format s "~s, ~s"
-                     (if (or (integerp (p-rx p)) allow-ratios)
-                         (p-rx p)
-                         (p-dx p))
-                     (if (or (integerp (p-ry p)) allow-ratios)
-                         (p-ry p)
-                         (p-dy p)))))
-      (let ((prev-contour nil))
-        (map-contour-segments
-         shape
-         (lambda (c# node end)
-           (unless (eql c# prev-contour)
-             (setf prev-contour c#)
-             (format s "{ "))
-           (etypecase node
-             (point
-              (p node)
-              (format s "; "))
-             (segment
-              ;; nothing to do
-              )
-             (bezier2
-              (format s "(")
-              (p (b2-c1 node))
-              (format s "); ")))
-           (when end
-             (format s "# }~%"))))))))
+(defun serialize-shape (shape &key allow-ratios normalize)
+  (let ((ox nil)
+        (oy nil))
+    (with-output-to-string (s)
+      (flet ((p (p)
+               (let ((x (if (or (integerp (p-rx p)) allow-ratios)
+                            (p-rx p)
+                            (p-dx p)))
+                     (y (if (or (integerp (p-ry p)) allow-ratios)
+                            (p-ry p)
+                            (p-dy p))))
+                 (when normalize
+                   ;; when normalize is true, subtract first point
+                   ;; from all points, and turn 1.0, 1.0 into 1, 1 (or
+                   ;; if allow-ratios is true, rationalize all floats)
+                   (unless ox
+                     (setf ox x)
+                     (setf oy y))
+                   (setf x (- x ox)
+                         y (- y oy))
+                   (if allow-ratios
+                       (setf x (rationalize x)
+                             y (rationalize y))
+                       (let ((fx (floor x))
+                             (fy (floor y)))
+                         (when (and (= x fx) (= y fy))
+                           (setf x fx
+                                 y fy)))))
+                 (format s "~s, ~s" x y))))
+        (let ((prev-contour nil))
+          (map-contour-segments
+           shape
+           (lambda (c# node end)
+             (unless (eql c# prev-contour)
+               (setf prev-contour c#)
+               (format s "{ "))
+             (etypecase node
+               (point
+                (p node)
+                (format s "; "))
+               (segment
+                ;; nothing to do
+                )
+               (bezier2
+                (format s "(")
+                (p (b2-c1 node))
+                (format s "); ")))
+             (when end
+               (format s "# }~%")))))))))
 
 (defparameter *dump-parse* nil)
 #++ (setf *dump-parse* t)
