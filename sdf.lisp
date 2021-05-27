@@ -139,13 +139,23 @@
                          (%make-edge-list s2 (samples/x sdf)))))
 
 (defun make-sdf (type shape &key (spread 2.5) (scale 1) integer-offset
-                              (render t) origin)
+                              (render t) origin wx wy)
   (when integer-offset
     ;; when true, calculate origin etc as (fixed-point?) integers instead
     ;; of doubles so we can store integer values in bmfont files
     ;; without rounding
     (error "todo: integer-offset"))
-  (destructuring-bind (wx wy) (calculate-size shape spread scale)
+  (destructuring-bind (cwx cwy) (calculate-size shape spread scale)
+    (when (or (and wx (> cwx wx))
+              (and wy (> cwy wy)))
+      ;; todo: restarts for "clip to specified size" and "use calculated size"
+      (error "calculated minimum size of sdf ~sx~s larger than specified size of ~sx~s~% bounds ~s, scale ~s, spread ~s~%"
+             cwx cwy wx wy
+             (list (aabb-p1 (bounding-box shape))
+                   (aabb-p2 (bounding-box shape)))
+             scale spread))
+    (unless wx (setf wx cwx))
+    (unless wy (setf wy cwy))
     (let* (#++(bounds (bounding-box shape))
            (rbounds (rbounding-box shape))
            ;; find center of shape bounding box, in image units
