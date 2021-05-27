@@ -185,7 +185,7 @@
   (declare (optimize speed))
   (check-type s segment)
   (check-type v v2)
-  (dist/v2-line*/sf v (s-p1 s) (s-p2 s)))
+  (dist/v2-line*/sf v (p-dv (s-p1 s)) (p-dv (s-p2 s))))
 
 (defun dist/v2-segment/sf (v s)
   (declare (optimize speed))
