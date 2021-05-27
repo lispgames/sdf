@@ -216,5 +216,6 @@
                                                               samples/y))
                                      :samples/x samples/x
                                      :samples/y samples/y)))
-        (render-sdf sdf :render render)
+        (unless (zerop (length (contours (cleaned-shape sdf))))
+          (render-sdf sdf :render render))
         sdf))))
