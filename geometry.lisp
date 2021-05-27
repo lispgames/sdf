@@ -191,16 +191,18 @@
   (declare (optimize speed))
   (check-type s segment)
   (check-type v v2)
-  (let* ((p0 (p-dv (s-p1 s)))
-         (n (v2- (p-dv (s-p2 s)) p0))
-         (l (v2. n n))
-         (tt (/ (v2. (v2- v p0) n)
-                l))
-         (pp (v2+ p0 (v2scale n tt))))
-    (when (<= 0 tt 1)
-      (coerce
-       (v2dist v pp)
-       'single-float))))
+  (if (point= (s-p1 s) (s-p2 s))
+      (dist/v2-point/sf v (s-p1 s))
+      (let* ((p0 (p-dv (s-p1 s)))
+             (n (v2- (p-dv (s-p2 s)) p0))
+             (l (v2. n n))
+             (tt (/ (v2. (v2- v p0) n)
+                    l))
+             (pp (v2+ p0 (v2scale n tt))))
+        (when (<= 0 tt 1)
+          (coerce
+           (v2dist v pp)
+           'single-float)))))
 
 (defvar *dump-distance* nil)
 
