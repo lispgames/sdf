@@ -59,28 +59,75 @@
                (mm node (dist node))
                (incf i))))
     #++(format t "distance from ~s = ~s:~%" xy best)
-    best))
+    (values best best-node)))
 
-(defun render-sdf (sdf &key (render t))
-  (let* ((origin (origin sdf))
-         (spread (spread sdf))
+(defun render-sdf/sdf (sdf)
+  (let* ((spread (spread sdf))
          (scale (pixel-scale sdf))
          (image (image sdf))
-         (shape (shape sdf))
+         (shape (cleaned-shape sdf))
          (signs (signs sdf)))
-    (when render
-      (loop with wy = (array-dimension image 0)
-            for j below wy
-            for y across (samples/y sdf)
-            do (loop for i below (array-dimension image 1)
-                     for x across (samples/x sdf)
-                     do (setf (aref image j i 0)
-                              (float
-                               (* (if (zerop (aref signs j i)) -1 1)
-                                  (/ (distance-to-shape shape x y)
-                                     (* scale spread)))
-                               1.0)))))))
+    (loop with wy = (array-dimension image 0)
+          for j below wy
+          for y across (samples/y sdf)
+          do (loop for i below (array-dimension image 1)
+                   for x across (samples/x sdf)
+                   do (setf (aref image j i 0)
+                            (float
+                             (* (if (zerop (aref signs j i)) -1 1)
+                                (/ (distance-to-shape shape x y)
+                                   (* scale spread)))
+                             1.0))))))
 
+
+(defun render-sdf/psdf (sdf)
+  (let* ((spread (spread sdf))
+         (scale (pixel-scale sdf))
+         (image (image sdf))
+         (shape (cleaned-shape sdf))
+         (signs (signs sdf)))
+    (loop with wy = (array-dimension image 0)
+          for j below wy
+          for y across (samples/y sdf)
+          do (loop for i below (array-dimension image 1)
+                   for x across (samples/x sdf)
+                   for d = (multiple-value-bind (d n)
+                               (distance-to-shape shape x y)
+                             (typecase n
+                               (point
+                                (let ((xy (v2 x y)))
+                                  (flet ((d (node dir)
+                                           (etypecase node
+                                             (segment
+                                              (dist/v2-line/sf xy node))
+                                             (bezier2
+                                              (if dir
+                                                  (dist/v2-line*/sf
+                                                   xy
+                                                   (p-dv (b2-p1 node))
+                                                   (p-dv (b2-c1 node)))
+                                                  (dist/v2-line*/sf
+                                                   xy
+                                                   (p-dv (b2-c1 node))
+                                                   (p-dv (b2-p2 node))))))))
+                                    (let* ((next (next shape n))
+                                           (prev (prev shape n))
+                                           (a (d prev nil))
+                                           (b (d next t)))
+                                      (max (abs a) (abs b))))))
+                               (t d)))
+                   do (setf (aref image j i 0)
+                            (float
+                             (* (if (zerop (aref signs j i)) -1 1)
+                                (/ d
+                                   (* scale spread)))
+                             1.0))))))
+
+(defun render-sdf (sdf &key (render t))
+  (when render
+   (ecase (sdf-type sdf)
+     (:sdf (render-sdf/sdf sdf))
+     (:psdf (render-sdf/psdf sdf)))))
 
 (defun make-mask (wx wy sx sy edge-list)
   (declare (ignorable sx sy))
