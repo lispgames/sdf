@@ -218,7 +218,10 @@
       ((zerop d)
        (/ b (* -2 a)))
       (t
-       (let ((q (* -1/2 (+ b (* (signum b) (sqrt d))))))
+       (let* ((rd (sqrt d))
+              (q (* -1/2 (if (minusp b)
+                             (- b rd)
+                             (+ b rd)))))
          (values (/ q a) (/ c q)))))))
 
 (defun solve-quadratic-cubic (io)
