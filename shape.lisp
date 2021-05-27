@@ -249,23 +249,23 @@
 (defun coerce-shape (in element-type)
   (let ((start t))
     (flet ((d (x) (coerce x element-type)))
-     (with-shape-builder (shape)
-       (map-contour-segments
-        in (lambda (c n e)
-             (declare (ignore c))
-             (when start
-               (setf start nil)
-               ;; contour should always start with a point
-               (start-contour (d (p-rx n)) (d (p-ry n))))
-             (etypecase n
-               (point)
-               (segment (line-to (d (s-rx2 n)) (d (s-ry2 n))))
-               (bezier2 (quadratic-to
-                         (d (b2-rxc n)) (d (b2-ryc n))
-                         (d (b2-rx2 n)) (d (b2-ry2 n)))))
-             (when e
-               (setf start t)
-               (end-contour))))))))
+      (with-shape-builder (shape)
+        (map-contour-segments
+         in (lambda (c n e)
+              (declare (ignore c))
+              (when start
+                (setf start nil)
+                ;; contour should always start with a point
+                (start-contour (d (p-rx n)) (d (p-ry n))))
+              (etypecase n
+                (point)
+                (segment (line-to (d (s-rx2 n)) (d (s-ry2 n))))
+                (bezier2 (quadratic-to
+                          (d (b2-rxc n)) (d (b2-ryc n))
+                          (d (b2-rx2 n)) (d (b2-ry2 n)))))
+              (when e
+                (setf start t)
+                (end-contour))))))))
 
 (defun translate-shape (in dx dy)
   ;; offset should probably be a option to parse-shape?
