@@ -1,6 +1,7 @@
 (defpackage #:sdf/base
   (:use :cl)
-  (:local-nicknames (#:a #:alexandria-2))
+  (:local-nicknames (#:a #:alexandria-2)
+                    (#:q #:damn-fast-updatable-priority-queue))
   (:export #:render-sdf
            #:v2
            #:vx

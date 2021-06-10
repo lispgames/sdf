@@ -187,22 +187,53 @@
   (check-type v v2)
   (dist/v2-line*/sf v (p-dv (s-p1 s)) (p-dv (s-p2 s))))
 
+(declaim (inline %dist/v2-segment/sf))
+
+(defun %dist/v2-segment/sf (v s)
+  (let* ((p0 (p-dv (s-p1 s)))
+         (n (v2- (p-dv (s-p2 s)) p0))
+         (l (v2. n n))
+         (tt (/ (v2. (v2- v p0) n)
+                l))
+         (pp (v2+ p0 (v2scale n tt))))
+    (values pp tt)))
+
 (defun dist/v2-segment/sf (v s)
   (declare (optimize speed))
   (check-type s segment)
   (check-type v v2)
   (if (point= (s-p1 s) (s-p2 s))
       (dist/v2-point/sf v (s-p1 s))
-      (let* ((p0 (p-dv (s-p1 s)))
-             (n (v2- (p-dv (s-p2 s)) p0))
-             (l (v2. n n))
-             (tt (/ (v2. (v2- v p0) n)
-                    l))
-             (pp (v2+ p0 (v2scale n tt))))
-        (when (<= 0 tt 1)
+      (multiple-value-bind (pp tt) (%dist/v2-segment/sf v s)
+        (when (< 0 tt 1)
           (coerce
            (v2dist v pp)
            'single-float)))))
+
+(defun dist/v2-segment/sf* (v s)
+  ;; calculate signed pseudo-distance from segment
+  (declare (optimize speed))
+  (check-type s segment)
+  (check-type v v2)
+  (if (point= (s-p1 s) (s-p2 s))
+      (error "can't find signed distance from degenerate segment ~s" s)
+      (multiple-value-bind (pp tt) (%dist/v2-segment/sf v s)
+        (flet ((sf (x) (coerce x 'single-float)))
+          (declare (inline sf))
+          (let* ((a (sf (v2dist v pp)))
+                 (dot (v2x (v2- v pp)
+                           (v2- (p-dv (s-p2 s))
+                                (p-dv (s-p1 s)))))
+                 (sign (if (minusp dot) -1 1)))
+            (values
+             (cond
+               ((<= 0 tt 1)
+                (* a sign))
+               ((< tt 0)
+                (* (sf (v2dist v (p-dv (s-p1 s)))) sign))
+               ((> tt 1)
+                (* (sf (v2dist v (p-dv (s-p2 s)))) sign)))
+             (* a sign)))))))
 
 (defvar *dump-distance* nil)
 
@@ -291,7 +322,6 @@
          (setf (aref io 0) (+ aa bb (/ a -3)))
          1)))))
 
-
 (defun dist/v2-bezier2/sf (p c)
   (declare (optimize speed))
   (check-type c bezier2)
@@ -301,7 +331,7 @@
          (p2 (p-dv (b2-p2 c)))
          (d (v2- p0 p))
          (d1 (v2- p1 p0))
-         ;(d2 (v2- p2 (v2- (v2scale p1 2) p0)))
+                                        ;(d2 (v2- p2 (v2- (v2scale p1 2) p0)))
          (d2 (v2+ p0 (v2+ (v2scale p1 -2) p2)))
          ;; s1 = a = (p0 - 2p1 + p2) . (p0 - 2p1 + p2) = d2 . d2
          (s1 (v2. d2 d2))
@@ -332,9 +362,94 @@
             repeat roots
             when (< 0 r 1)
               minimize (v2dist p (eval-curve r)) into dd double-float
-            finally (return (coerce dd 'single-float))))))
+            else minimize (v2dist p (eval-curve r)) into dd2 double-float
+            finally (return (values (coerce dd 'single-float)
+                                    (coerce dd2 'single-float)))))))
 
+(defun dist/v2-bezier2/sf* (p c)
+  ;; calculate signed pseudo-distance from bez2
+  (declare (optimize speed))
+  (check-type c bezier2)
+  (check-type p v2)
+  (let* ((p0 (p-dv (b2-p1 c)))
+         (p1 (p-dv (b2-c1 c)))
+         (p2 (p-dv (b2-p2 c)))
+         (d (v2- p0 p))
+         (d1 (v2- p1 p0))
+                                        ;(d2 (v2- p2 (v2- (v2scale p1 2) p0)))
+         (d2 (v2+ p0 (v2+ (v2scale p1 -2) p2)))
+         ;; s1 = a = (p0 - 2p1 + p2) . (p0 - 2p1 + p2) = d2 . d2
+         (s1 (v2. d2 d2))
+         ;; s2 = b = 3 ((p0 - 2p1 + p2) . (p1 - p0)) = 3(d2 . d1)
+         (s2 (* 3 (v2. d1 d2)))
+         ;; c = ((p0 - 2p1 + p2) . (p0 - p)) + 2((p1-p0).(p1-p0)))
+         ;;   = 3(d2 . d) + 2(d1 . d1)
+         (s3 (* 2 (v2. d1 d1)))
+         ;; d = (p0-p).(p0-p) = d.d
+         (abcd (make-array 4 :element-type 'double-float
+                             :initial-contents
+                             (list s1
+                                   s2
+                                   (+ s3 (v2. d2 d))
+                                   (v2. d1 d))))
+         (roots (solve-cubic abcd))
+         (rmin nil)
+         (pmin nil)
+         (dmin (coerce most-positive-single-float 'double-float)))
+    (declare (type (and unsigned-byte fixnum) roots)
+             (dynamic-extent abcd)
+             (type (or null fixnum) rmin)
+             (double-float dmin))
+    (when *dump-distance*
+      (format t "roots = ~s, abcd=~s~%" roots abcd))
 
+    (flet ((eval-curve (at)
+             (v2+ (v2+ (v2scale d2 (* at at))
+                       (v2scale d1 (* 2 at)))
+                  p0)))
+      (declare (inline eval-curve))
+      (loop for r double-float across abcd
+            for i fixnum from 0
+            repeat roots
+            when (<= 0 r 1)
+              do (let* ((e (eval-curve r))
+                        (d (v2dist p e)))
+                   (when (<= d dmin)
+                     (setf dmin d
+                           pmin e
+                           rmin i)))
+            when (< r 0)
+              do (let ((d (v2dist p (p-dv (b2-p1 c)))))
+                   (when (<= d dmin)
+                     (setf dmin d
+                           rmin i)))
+            when (> r 1)
+              do (let ((d (v2dist p (p-dv (b2-p2 c)))))
+                   (when (<= d dmin)
+                     (setf dmin d
+                           rmin i)))))
+    (when rmin
+      (flet ((sf (x) (coerce x 'single-float))
+             (ld (v1 v2)
+               (dist/v2-line*/sf p v1 v2)))
+        (declare (inline sf))
+        (let ((a (sf dmin))
+              (rmin (aref abcd rmin)))
+          (cond
+            ((<= 0 rmin 1)
+             (let* ((tan (v2- (v2lerp (p-dv (b2-c1 c))
+                                      (p-dv (b2-p2 c))
+                                      rmin)
+                              (v2lerp (p-dv (b2-p1 c))
+                                      (p-dv (b2-c1 c))
+                                      rmin)))
+                    (dir (v2x tan (v2- p pmin)))
+                    (s (if (minusp dir) -1 1)))
+               (- (* a s))))
+            ((< rmin 0)
+             (ld (p-dv (b2-p1 c)) (p-dv (b2-c1 c))))
+            ((> rmin 1)
+             (ld (p-dv (b2-c1 c)) (p-dv (b2-p2 c))))))))))
 
 (defun eval-at/b2 (b at)
   (let* ((p0 (p-rv (b2-p1 b)))

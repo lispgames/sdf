@@ -483,6 +483,9 @@
 (defun next (shape element)
   (gethash element (%next shape)))
 
+(defun next2 (shape element)
+  (next shape (next shape element)))
+
 (defun (setf next) (new shape element)
   (setf (gethash element (%next shape)) new))
 
@@ -493,6 +496,8 @@
 (defun (setf prev) (new shape element)
   (setf (gethash element (%prev shape)) new))
 
+(defun prev2 (shape element)
+  (prev shape (prev shape element)))
 
 
 (defclass msdf-shape (sdf-shape)

@@ -38,6 +38,7 @@
 
 (defun v2x (a b)
   (declare (type v2 a b))
+  ;; Z value of cross product of vectors A,B in XY plane
   (- (* (vx a) (vy b))
      (* (vy a) (vx b))))
 

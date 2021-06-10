@@ -1,5 +1,5 @@
 (in-package #:sdf/base)
-(defun serialize-shape (shape &key allow-ratios normalize)
+(defun serialize-shape (shape &key allow-ratios normalize edge-colors)
   (let ((ox nil)
         (oy nil))
     (with-output-to-string (s)
@@ -27,7 +27,25 @@
                          (when (and (= x fx) (= y fy))
                            (setf x fx
                                  y fy)))))
-                 (format s "~s, ~s" x y))))
+                 (if allow-ratios
+                     (format s "~s, ~s" x y)
+                     (format s "~,,,,,,'ee, ~,,,,,,'ee" x y))))
+             (c (n &optional semi)
+               (let ((e (gethash n edge-colors)))
+                 (when e
+                   (cond
+                     ((or (equalp e '(t nil t))
+                          (eql e #b101))
+                      (format s "m"))
+                     ((or (equalp e '(nil t t))
+                          (eql e #b011))
+                      (format s "c"))
+                     ((or (equalp e '(t t nil))
+                          (eql e #b110))
+                      (format s "y"))
+                     (t (format s "w")))
+                   (when semi
+                     (format s "; "))))))
         (let ((prev-contour nil))
           (map-contour-segments
            shape
@@ -40,9 +58,13 @@
                 (p node)
                 (format s "; "))
                (segment
+                (when edge-colors
+                  (c node t))
                 ;; nothing to do
                 )
                (bezier2
+                (when edge-colors
+                  (c node))
                 (format s "(")
                 (p (b2-c1 node))
                 (format s "); ")))

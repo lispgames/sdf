@@ -27,11 +27,10 @@
 (defun channels-for-type (type)
   (ecase type
     ;; return nil for 1 channel, since we don't have a 3rd dimension for that?
-    ((:sdf :psdf) 1)))
+    ((:sdf :psdf) 1)
+    ((:msdf) 3)
+    ((:smsdf :mtsdf) 4)))
 
-
-(defun distance-sign-at-node (xy node)
-  1)
 
 (defun distance-to-shape (shape x y)
   (let ((best most-positive-double-float)
@@ -127,7 +126,10 @@
   (when render
    (ecase (sdf-type sdf)
      (:sdf (render-sdf/sdf sdf))
-     (:psdf (render-sdf/psdf sdf)))))
+     (:psdf (render-sdf/psdf sdf))
+     (:smsdf (render-sdf/smsdf sdf))
+     (:msdf (render-sdf/msdf sdf))
+     (:mtsdf (render-sdf/msdf sdf :mtsdf t)))))
 
 (defun make-mask (wx wy sx sy edge-list)
   (declare (ignorable sx sy))
@@ -186,7 +188,8 @@
                          (%make-edge-list s2 (samples/x sdf)))))
 
 (defun make-sdf (type shape &key (spread 2.5) (scale 1) integer-offset
-                              (render t) origin wx wy)
+                              (render t) origin wx wy
+                              min-sharp-edge-length)
   (when integer-offset
     ;; when true, calculate origin etc as (fixed-point?) integers instead
     ;; of doubles so we can store integer values in bmfont files
@@ -262,7 +265,14 @@
                                              (%make-edge-list clean-shape
                                                               samples/y))
                                      :samples/x samples/x
-                                     :samples/y samples/y)))
+                                     :samples/y samples/y
+                                     :min-sharp-edge-length
+                                     ;; length in texels below which
+                                     ;; edges are collapsed when
+                                     ;; calculating msdf
+                                     (* (abs (- (aref samples/x 1)
+                                                (aref samples/x 0)))
+                                        (or min-sharp-edge-length 0)))))
         (unless (zerop (length (contours (cleaned-shape sdf))))
           (render-sdf sdf :render render))
         sdf))))

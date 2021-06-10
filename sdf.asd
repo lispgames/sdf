@@ -3,7 +3,9 @@
   :version "0.0.1"
   :author "Bart Botta <00003b at gmail.com>"
   :license "MIT"
-  :depends-on (cl-vectors cl-paths cl-aa cl-aa-misc parse-number)
+  :depends-on (cl-vectors cl-paths cl-aa cl-aa-misc parse-number
+                          float-features
+                          damn-fast-updatable-priority-queue)
   :serial t
   :components ((:file "packages-base")
                (:file "v2")

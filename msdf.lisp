@@ -1,427 +1,295 @@
-(in-package #:sdf)
+(in-package #:sdf/base)
 
-#++
-(loop for i in '(6 5 3)
-      for s = (ash i 1)
-      for i2 = (logand (logior s (ash s -3)) 7)
-      collect (list i (loop for x below 3 collect (logbitp x i))
-                    i2 (loop for x below 3
-                             collect (logbitp x i2))))
-#++
-((6 (NIL T T) 5 (T NIL T))
- (5 (T NIL T) 3 (T T NIL))
- (3 (T T NIL) 6 (NIL T T)))
+;; render msdf from a SHAPE
 
+(defun corner-angles (shape)
+  ;; return hash of point -> (signed angle . bisector)
+  (let ((corner-angles (make-hash-table)))
+    (flet ((t1 (n)
+             (etypecase n
+               (segment (v2- (p-dv (s-p2 n)) (p-dv (s-p1 n))))
+               (bezier2 (v2- (p-dv (b2-c1 n)) (p-dv (b2-p1 n))))))
+           (t2 (n)
+             (etypecase n
+               (segment (v2- (p-dv (s-p2 n)) (p-dv (s-p1 n))))
+               (bezier2 (v2- (p-dv (b2-p2 n)) (p-dv (b2-c1 n))))))
+           (at (t1 t2)
+             (let* ((a1 (atan (vy t1) (vx t1)))
+                    (a2 (atan (vy t2) (vx t2)))
+                    (a (- a1 a2)))
+               (cond
+                 ((< a (- pi))
+                  (+ a (* 2 pi)))
+                 ((> a pi)
+                  (- a (* 2 pi)))
+                 (t a))))
+           (b (t1 t2)
+             (let* ((t1 (v2n t1))
+                    (t2 (v2n t2))
+                    (s (v2+ t1 t2)))
+               (if (zerop (v2mag s))
+                   t1
+                   (v2n (v2rx s))))))
+      (map-contour-segments shape
+                            (lambda (c# n e)
+                              (declare (ignore c# e))
+                              (when (typep n 'point)
+                                (let* ((p (prev shape n))
+                                       (n2 (next shape n))
+                                       (a (t2 p))
+                                       (b (t1 n2))
+                                       (aa (at a b)))
+                                  (assert (not (gethash p corner-angles)))
+                                  (setf (gethash n corner-angles)
+                                        (cons aa (b a b))))))))
+    corner-angles))
 
-(defun assign-colors/full (shape)
-  (let* ((rgb #(#(t nil t) #(t t nil) #(nil t t)))
-         (c0 0)
-         (h (make-hash-table :test 'equalp))
-         (ps (coerce (points shape) 'vector))
-         (start (or (position-if 'p-corner ps) 0))
-         (end (position-if 'p-corner ps :from-end t)))
-    #++(format t "start = ~s,end=~s~%" start end)
-    #++(format t "~s~%" (map 'vector 'p-corner ps))
+(defun collapse-short-edges (shape corner-angles min-length)
+  ;; for any edges in shape estimated to be shorter than MIN-LENGTH,
+  ;; add smaller of adjacent angles to other angle, and zero the
+  ;; smaller one, and return hash of adjusted values
 
-    (loop with c = c0
-          with l = (length ps)
-          for i below l
-          for p = (aref ps (mod (+ start i) l))
-          when (and (plusp i) (p-corner p))
-            do (if (= (mod (+ i start) l) end)
-                   (setf c (car (set-difference '(0 1 2)
-                                                (list c0 c))))
-                   (setf c (mod (+ 1 c) 3)))
+  ;; need signed angles, since a Z shape should collapse to a line if
+  ;; the middle segment is removed, so adding +n and -n would give 0
+  ;; angle
+;;; todo
+  corner-angles)
 
-          do (setf (gethash (p-p0 p) h) c))
-    #++(Format t "~s: ~s ~s ~s~%" start c0 cn-1 cn)
-    #++(when (= cn c0)
-         (loop with c = (car (set-difference '(0 1 2) (list cn-1 c0)))
-               for i downfrom (1- start)
-               repeat (length ps)
-               for p = (aref ps (mod (+ i (length ps)) (length ps)))
-               while (= (gethash (p-p0 p) h) cn)
-               do (setf (gethash (p-p0 p) h) c)
-                  (format t "reset ~s ~s ~s~%" (position p (points shape)) c
-                          (p-p0 p))))
+(defun assign-colors (shape corner-angles min-angle)
+  ;; return hash of segment/bez -> color masks
+  (let ((colors (make-hash-table))
+        (i 2)
+        (masks #((t t nil) (t nil t) (nil t t))))
+    (flet ((set-point (n m)
+             (assert (typep n 'point))
+             (let ((old (gethash n colors)))
+               (setf (gethash n colors)
+                     (list (or (first m) (first old))
+                           (or (second m) (second old))
+                           (or (third m) (third old)))))))
+      (map-contour-segments
+       shape (lambda (c n e)
+               (declare (ignore c))
+               (unless (typep n 'point)
+                 (setf (gethash n colors) (aref masks i))
+                 (set-point (prev shape n) (aref masks i))
+                 (set-point (next shape n) (aref masks i))
 
-    (loop for s in (contours shape)
-          for c = (gethash (s-p0 s) h)
-          do (setf (s-channels s) (aref rgb c)))
+                 (format t "~s = ~s~%" n (aref masks i))
+                 (cond
+                   (e
+                    (setf i 2))
+                   ((> (abs (car (gethash (next shape n) corner-angles)))
+                       min-angle)
+                    (setf i (mod (1+ i) 2))))))))
+    colors))
 
-    (loop for p in (points shape)
-          when (p-corner p)
-            do (assert (not (equalp (s-channels (p-e1 p))
-                                    (s-channels (p-e2 p)))))
-                                        ;else do
-          #++(assert (equalp (s-channels (p-e1 p))
-                             (s-channels (p-e2 p)))))
-    (loop for s in (curves shape)
-          for i from 0
-          do (assert (not (equalp (s-channels s) #(t t t)))))
-    (loop for s in (lines shape)
-          for i from 0
-          do (assert (not (equalp (s-channels s) #(t t t)))))
-    shape))
+(defun determine-facing (shape edges)
+  ;; figure out which way each contour in shape is oriented, so we can
+  ;; calculate signed distances for partial contours (returns hash of
+  ;; node -> +-1, to be multiplied by sign calculated by
+  ;; pseudo-distance function)
+  (let ((facing (make-hash-table)))
+    (map-contour-segments
+     shape (lambda (c n e)
+             (declare (ignore c e))
+             (unless (typep n 'point)
+               (setf (gethash n facing) 1))))
+    edges
+    facing))
 
-(defun assign-colors/teardrop (shape)
-  (when (and (= 1 (length (curves shape)))
-             (zerop (length (lines shape))))
-    ;; single curve, needs split
-    (break "todo: split teardrop curves"))
-  (let* ((corner (find-if 'p-corner (points shape)))
-         (split (loop with p1 = (car (points shape))
-                      with d1 = (v2dist (p-p0 p1) (p-p0 corner))
-                      for p in (cdr (points shape))
-                      for d = (v2dist (p-p0 p) (p-p0 corner))
-                      when (> d d1)
-                        do (setf d1 d p1 p)
-                      finally (return p1))))
-    (loop with c1 = #(t nil t)
-          with c2 = #(t t nil)
-          with color = c1
-          for c in (contours shape)
-          if (equalp (p-p0 corner) (s-p0 c))
-            do (setf color c2)
-          else if (equalp (p-p0 split) (s-p0 c))
-                 do (setf color c1)
-          do (setf (s-channels c) color)))
-  shape)
+(defun distance-to-shape/rgb (shape x y colors)
+  ;; return as 3 values, nearest nodes of SHAPE for each color, and
+  ;; actual distance as 4th value
+  (let ((r most-positive-double-float)
+        (re nil)
+        (g most-positive-double-float)
+        (ge nil)
+        (b most-positive-double-float)
+        (be nil)
+        (a most-positive-double-float)
+        (ae nil)
+        (xy (v2 x y))
+        (i 0))
+    (labels ((mm (node dist)
+               (destructuring-bind (rm gm bm) (gethash node colors)
+                 (when dist
+                   (let ((adist (abs dist)))
+                     (when (< (abs dist) (abs a))
+                       (setf a dist
+                             ae node))
+                     (when (and rm (< adist r))
+                       (setf r adist
+                             re node))
+                     (when (and gm (< adist g))
+                       (setf g adist
+                             ge node))
+                     (when (and bm (< adist b))
+                       (setf b adist
+                             be node))))))
+             (dist (node)
+               (etypecase node
+                 (point
+                  (dist/v2-point/sf xy node))
+                 (segment
+                  (dist/v2-segment/sf xy node))
+                 (bezier2
+                  (dist/v2-bezier2/sf xy node))
+                 (null))))
+      (map-contour-segments
+       shape (lambda (c# node endp)
+               (declare (ignorable c# endp))
+               #++(format t "  ~s~%" node)
+               (progn                   ;unless (typep node 'point)
+                 (mm node (dist node)))
+               (incf i))))
+    #++(format t "distance from ~s = ~s:~%" xy (list best r g b))
+    (values re ge be a ae)))
 
-(defun simplify-shape (shape)
-  #++
-  (format t "simplify shape ~s ~s ~s~%"
-          (length (points shape))
-          (length (lines shape))
-          (length (curves shape)))
-  (let* ((h (make-hash-table :test 'equalp))
-         (v (coerce (contours shape) 'vector))
-         (delete nil))
-    (loop for p in (points shape)
-          do (setf (gethash (p-p0 p) h) p))
-    #++(loop for c in (curves shape)
-             for p0 = (gethash (c-p0 c) h)
-             for p2 = (gethash (c-p2 c) h)
-             for l = (+ (v2dist (c-p0 c) (c-p1 c))
-                        (v2dist (c-p1 c) (c-p2 c)))
-             when (and (p-corner p0)
-                       (p-corner p2)
-                       (< l 0.5))
-               do (format t "delete curve? ~s%~s~% ~s~% ~s~%"
-                          l (c-p0 c) (c-p1 c) (c-p2 c))
-                  (push c delete))
-    #++(loop for c in (lines shape)
-             for p0 = (gethash (l-p0 c) h)
-             for p2 = (gethash (l-p2 c) h)
-             for l = (v2dist (l-p0 c) (l-p2 c))
-             when (and (p-corner p0)
-                       (p-corner p2)
-                       (< l 0.4))
-               do (format t "delete line? ~s%~s~% ~s~%"
-                          l (l-p0 c) (l-p2 c))
-                  (push c delete))
-    ;; we check for any pair of corners separated by small distance
-    ;; along contour and if found remove that segment of the contour.
-    ;; probably should also check for small area in addition to length.
-    #++(format t "contours = ~s~%" (length (contours shape)))
-    (loop with l = (length v)
-          with start = (or (loop for i below l
-                                 for p = (gethash (s-p0 (aref v i)) h)
-                                 when (and (point-p p) (p-corner p))
-                                   return i)
-                           0)
-          with segment = nil
-          with segment-len = 0
-          for i1 below l
-          for i = (mod (+ i1 start) l)
-          for s = (aref v i)
-          for p = (gethash (s-p0 s) h)
-          when (p-corner p)
-            do #++
-               (when (and segment (< 0.5 segment-len 2))
-                 (format t "short segment ~s?: ~s~%" segment-len segment))
-               (when (and segment (< segment-len 0.5))
-                 (setf segment (reverse segment))
-                 #++(format t "delete segment ~s: ~s~%" segment-len segment)
-                 #++(loop for d in segment do (setf (aref delete d) t))
-                 (push segment delete))
-               (setf segment nil
-                     segment-len 0)
-          do (push i segment)
-             (if (typep s 'curve)
-                 ;; approximate length of curve by length of control
-                 ;; points
-                 (incf segment-len
-                       (+ (v2dist (c-p0 s) (c-p1 s))
-                          (v2dist (c-p1 s) (c-p2 s))))
-                 (incf segment-len (v2dist (s-p0 s) (s-p2 s)))))
-    #++ ;; not working yet?
-    (when delete
-      (let ((dh (make-hash-table)))
-        (loop
-          for ds in delete
-          for p1 = (gethash (s-p0 (aref v (first ds))) h)
-          for p2 = (loop for d in ds
-                         for s = (aref v d)
-                         do (setf (gethash s dh) t)
-                            (setf (gethash (gethash (s-p2 s) h) dh) t)
-                            (when (curve-p s)
-                              (setf (gethash (c-p1 s) dh) t))
-                         finally (return (gethash (s-p2 s) h)))
-          do (setf (p-e2 p1) (p-e2 p2)
-                   (p-t2 p1) (p-t2 p2))
-             (setf (s-p0 (p-e2 p1)) (p-p0 p1)))
-        (flet ((d (x &optional (d t))
-                 (loop for p in x
-                       unless (gethash p dh)
-                         collect p
-                       else do (when d
-                                 (format t "delete ~s~%" p)))))
-          (setf (points shape) (d (points shape)))
-          (setf (curves shape) (d (curves shape)))
-          (setf (lines shape) (d (lines shape)))
-          (setf (contours shape) (d (contours shape) nil))))
-      #++
-      (loop for c in (contours shape)
-            do (format t "~s: ~s~%" (type-of c) (s-p0 c))
-               (format t "    ~s~%" (s-p2 c)))))
-  shape)
+(defun fix-msdf (image simage pimage)
+  ;; compare msdf to sdf and psdf, removing extra channels from msdf
+  ;; where it is obviously wrong
+  (let ((wx (array-dimension image 1))
+        (wy (array-dimension image 0)))
+    (flet ((median (a b c)
+             (max (min a b) (min (max a b) c))))
+      (loop for j below wy
+            do (loop for i below wx
+                     for m = (median (aref image j i 0)
+                                     (aref image j i 1)
+                                     (aref image j i 2))
+                     for s = (aref simage j i)
+                     for p = (aref pimage j i)
+                     when (> (abs (- p m)) #.(/ 1024.0))
+                       do (setf (aref image j i 0) p
+                                (aref image j i 1) p
+                                (aref image j i 2) p))))))
 
-(defun assign-colors (shape)
-  (let ((c (count-if 'p-corner (points shape))))
-    (case c
-      (0 ;; no corners, use white
-       (loop for p in (curves shape) do (setf (s-channels p) #(t t t)))
-       (loop for p in (lines shape) do (setf (s-channels p) #(t t t)))
-       shape)
-      (1 ;; teardrop, 2 colors, possibly need to split curve
-       (assign-colors/teardrop shape))
-      (t                   ;; multiple corners, use 3 colors
-       (assign-colors/full ;shape
-        (simplify-shape shape))))))
+(defvar *last-edge-colors* nil)
+(defun render-sdf/msdf (sdf &key mtsdf)
+  (let* ((spread (spread sdf))
+         (scale (pixel-scale sdf))
+         (image (image sdf))
+         (simage (make-array (subseq (array-dimensions image) 0 2)
+                             :element-type 'single-float :initial-element 0.0))
+         (pimage (make-array (subseq (array-dimensions image) 0 2)
+                             :element-type 'single-float :initial-element 0.0))
+         (shape (cleaned-shape sdf))
+         (corners1 (corner-angles shape))
+         (min-length (min-sharp-edge-length sdf))
+         (corners (if (and min-length (not (zerop min-length)))
+                      (collapse-short-edges shape corners1 min-length)
+                      corners1))
+         (colors (assign-colors shape corners (min-angle sdf)))
+         (samples/x (samples/x sdf))
+         (samples/y (samples/y sdf))
+         (signs (signs sdf))
+         (edges (make-edge-list sdf))
+         (facing (determine-facing shape edges)))
+    (setf *last-edge-colors* colors)
+    (labels ((scale (d sign)
+               (coerce
+                (* (if (zerop sign) -1 1)
+                   (/ (min 1000 (max -1000 d)) (* scale spread)))
+                'single-float))
+             (select-edge-for-point-and-color (n x y c)
+               (assert (typep n 'point))
+               (let* ((d (v2- (v2 x y) (p-dv n)))
+                      (s (- (v2x d (cdr (gethash n corners)))))
+                      (prev (prev shape n))
+                      (pmask (gethash prev colors))
+                      (next (next shape n))
+                      (nmask (gethash next colors)))
+                 (cond
+                   ((and (plusp s) (or (not c) (nth c pmask)))
+                    prev)
+                   ((and (not (plusp s)) (or (not c) (nth c nmask)))
+                    next)
+                   ((nth c pmask)
+                    prev)
+                   ((nth c nmask)
+                    next)
+                   (t (break "??")))))
+             (pseudo-distance (x y n c)
+               (etypecase n
+                 (point
+                  (pseudo-distance x y
+                                   (select-edge-for-point-and-color n x y c)
+                                   c))
+                 (segment
+                  (nth-value 1 (dist/v2-segment/sf* (v2 x y) n)))
+                 (bezier2
+                  (dist/v2-bezier2/sf* (v2 x y) n))))
+             (facing (n x y c)
+               (if (typep n 'point)
+                   (facing (select-edge-for-point-and-color n x y c)
+                           x y c)
+                   (gethash n facing))))
+      (a:write-string-into-file
+       (print
+        (serialize-shape shape :allow-ratios nil :edge-colors colors))
+       "c:/tmp/shapedesc1.txt"
+       :if-exists :supersede)
+      (uiop:run-program
+       (print
+        (format nil "msdfgen -autoframe -pxrange ~a -scale ~a -size ~a ~a -o c:/tmp/shapedesc1.png -testrender c:/tmp/shapedesc1-r.png 256 256  -shapedesc c:/tmp/shapedesc1.txt"
+                (* 2 spread) (/ scale)
+                (array-dimension image 1)
+                (array-dimension image 0)))
+       :output t)
+      (a:write-string-into-file
+       (print
+        (serialize-shape shape :allow-ratios nil))
+       "c:/tmp/shapedesc1nc.txt"
+       :if-exists :supersede)
+      (uiop:run-program
+       (print
+        (format nil "msdfgen -autoframe -pxrange ~a -scale ~a -size ~a ~a -o c:/tmp/shapedesc1nc.png -testrender c:/tmp/shapedesc1nc-r.png 256 256  -shapedesc c:/tmp/shapedesc1nc.txt"
+                (* 2 spread) (/ scale)
+                (array-dimension image 1)
+                (array-dimension image 0)))
+       :output t)
 
-(defparameter *postprocess* t)
+      (loop with wy = (array-dimension image 0)
+            for j below wy
+            for rs = 0
+            for gs = 0
+            for bs = 0
+            for y across samples/y
+            for edge-row across edges
+            do #++(setf (values rs gs bs) (init-signs edge-row))
+               (format t "at ~s: ~s ~s ~s~%" j rs gs bs)
+               (loop for i below (array-dimension image 1)
+                     for x across samples/x
+                     do #++ (setf (values rs gs bs edge-row)
+                                  (update-signs rs gs bs x edge-row))
+                        (multiple-value-bind (re ge be a ae)
+                            (distance-to-shape/rgb shape x y colors)
+                          (if (and re ge be)
+                              (let ((r (pseudo-distance x y re 0))
+                                    (g (pseudo-distance x y ge 1))
+                                    (b (pseudo-distance x y be 2)))
 
-(defun postprocess (image)
-  (opticl:with-image-bounds (wy wx c) image
-    (assert (= c 4))
-    (labels ((check4 (a b c d)
-               ;; at least 1 channel is always above or always below 0
-               (or (and (>= a 128) (>= b 126) (>= c 126) (>= d 126))
-                   (and (<= a 128) (<= b 128) (<= c 128) (<= d 128))))
-             (check4b (&rest x)
-               (count-if (lambda (a) (>= a 127)) x))
-             (check1 (a b)
-               (let ((as (signum (- a 127)))
-                     (bs (signum (- b 127))))
-                 (not (eql as bs))))
-             (check (a b)
-               (flet ((m (a) (- a 127)))
-                 (when (and (= 2 (count t (mapcar #'check1 a b)))
-                            #++(eql (car (remove (fourth a) a))
-                                    (car (remove (fourth b) b)))
-
-                            (let* ((a (mapcar #'m a))
-                                   (b (mapcar #'m b))
-                                   (a2 (fourth a))
-                                   (a1 (car (remove a2 a)))
-                                   (b2 (fourth b))
-                                   (b1 (car (remove b2 b)))
-                                   (d (min (abs (- a2 b2)))))
-                              (declare (ignorable d))
-                              ;; heuristic to try to avoid gaps while
-                              ;; preserving corners
-                              (and
-                               ;; both pixels are on or both off
-
-                               (= (signum a2) (signum b2))
-                               ;; ranges of good and bad values overlap
-                               (or (<= a1 b1 a2 b2)
-                                   (<= b1 a1 b2 a2)
-                                   (<= a1 b1 b2 a2)
-                                   (<= b1 a1 a2 b2)
-                                   (= a2 b2 -128))
-                               ;; not close to edge
-                               (> (max (abs a2) (abs b2)) 12)
-                               (> (max (abs a1) (abs b1)) 25)
-                               ;; similar size ranges
-                               (< (abs (- (abs (- a2 a1))
-                                          (abs (- b2 b1))))
-                                  80)
-                               #++
-                               (<= (- b1 d) a1 (+ b1 d)))))
-                   (let* ((a (mapcar #'m a))
-                          (b (mapcar #'m b))
-                          (a2 (fourth a))
-                          (a1 (car (remove a2 a)))
-                          (b2 (fourth b))
-                          (b1 (car (remove b2 b)))
-                          (d (min (abs (- a2 b2)))))
-                     (declare (ignorable a1 a2 b1 b2 d))
-                     (format t "~&~{~4,' d ~} |~{ ~4,' d~} [~2d ~2d] {~2d ~2d} @~3,' d ~d ~d ~d~%"
-                             a b
-                             (min (abs a2) (abs b2))
-                             (max (abs a2) (abs b2))
-                             (min (abs a1) (abs b1))
-                             (max (abs a1) (abs b1))
-                             d
-                             (abs (- a2 a1))
-                             (abs (- b2 b1))
-                             (abs (- (abs (- a2 a1))
-                                     (abs (- b2 b1))))
-
-
-
-
-                             ))
-                   #++(break "~s ~s ~s ~s" a b
-                             (mapcar #'check1 (subseq a 0 3)
-                                     (subseq b 0 3))
-                             (loop for x in a
-                                   for y in b
-                                   collect (list
-                                            (- x 128) (- y 128)
-                                            (plusp (- x 128)) (plusp (- y 128)))
-                                   )
-                             )
-                   t)))
-             (dont-need-msdf (x)
-               (destructuring-bind (r g b a) x
-                 (or (<= 3 (count 0 x))
-                     (<= 3 (count 255 x))
-                     #++(= (abs (- a 127))
-                           (min (abs (- r 127))
-                                (abs (- g 127))
-                                (abs (- b 127))))))))
-      (loop
-        for y from 1 below (1- wy)
-        do (loop
-             for x from 1 below (1- wx)
-             for p00 = (opticl:pixel* image y x)
-             for p01 = (opticl:pixel* image (1+ y) x)
-             for p10 = (opticl:pixel* image y (1+ x))
-             for p11 = (opticl:pixel* image (1+ y) (1+ x))
-             when  (and nil
-                        (dont-need-msdf p00)
-                        (dont-need-msdf p01)
-                        (dont-need-msdf p10)
-                        (dont-need-msdf p11))
-               do (let ((a (fourth p00)))
-                    (format t "~s ~s ~s ~s~%" p00 p01 p10 p11)
-                    (format t "~s: ~s ~s ~s~%"
-                            (count 0 p00)
-                            (count 0 p01)
-                            (count 0 p10)
-                            (count 0 p11))
-                    (setf (opticl:pixel image y x)
-                          (values a a a a)))
-             else
-               when (and  #++(plusp (count t (mapcar #'check4 p00 p01 p10 p11)))
-                          (let ((l (mapcar #'check4b p00 p01 p10 p11)))
-
-                            (and (or (plusp (count 0 l))
-                                     (plusp (count 4 l)))
-                                 (or (plusp (count 3 l))
-                                     (plusp (count 1 l)))))
-                          (or (check p00 p10)
-                              (check p00 p01)
-                              #++(check p00 p11)))
-                 do (let ((a (fourth p00)))
-                      (let ((l (mapcar #'check4b p00 p01 p10 p11)))
-                        (format t "~s ~s ~s ~s~%" p00 p01 p10 p11)
-                        (format t "~s: ~s ~s ~s ~s~%"
-                                l
-                                (plusp (count 0 l))
-                                (plusp (count 4 l))
-                                (plusp (count 3 l))
-                                (plusp (count 1 l))))
-                      (setf (opticl:pixel image y x)
-                            (values a a a a)
-                                        ;(values 0 0 0 0)
-                            #++
-                            (loop for i in p00
-                                  collect (if (= i a) i 128)))))))
-
-    )
-  )
-(defun msdf (font glyph font-scale ms-scale spread
-             &key (mode (if (eql *backend* :sdf) :msdf *backend*)))
-  (declare (ignore ms-scale font))
-  (let* ((scale font-scale)
-         (gw (- (xmax glyph) (xmin glyph)))
-         (gh (- (ymax glyph) (ymin glyph)))
-         (padding (+ 0 spread))
-         (dw (ceiling (+ 2 (* 2 padding) (* gw scale))))
-         (dh (ceiling (+ 2 (* 2 padding) (* gh scale))))
-         (rx (* 0 (- (random 1.0) 0.5)))
-         (ry (* 0 (- (random 1.0) 0.5))))
-
-    (format t "~s / ~s ~sx~s~%" (zpb-ttf:postscript-name glyph)
-            (zpb-ttf:code-point glyph) dw dh)
-
-    (format t " :random offset ~x,~x~%" rx ry)
-    (when (or (zerop gw) (zerop gh))
-      (return-from msdf (values (ecase mode
-                                  (:msdf
-                                   (opticl:make-8-bit-rgb-image
-                                    4 4 :initial-element 0))
-                                  (:msdf+a
-                                   (opticl:make-8-bit-rgba-image
-                                    4 4 :initial-element 0)))
-                                2)))
-    (let* ((segments nil))
-      (setf segments (translate-glyph glyph scale :filter 'assign-colors))
-      (setf (car *f*) segments)
-      (let* ((dest (opticl:make-8-bit-rgba-image
-                    (ceiling dh) (ceiling dw) :initial-element 0)))
-        (loop for y below (array-dimension dest 0)
-              do (loop for x below (array-dimension dest 1)
-                       for fx = (- x (- (/ (- dw (* scale gw) 1 rx)
-                                           2)
-                                        (* (xmin glyph) scale)))
-                       for fy =  (- y (- (/ (- dh (* scale gh) 1 ry)
-                                            2)
-                                         (* (ymin glyph) scale)))
-                       for (r g b a) = (dist/s (v2 fx fy) segments t)
-                       for dy = (- dh 1 y)
-                       do (if (< (abs r) 100000)
-                              (setf (aref dest dy x 0)
-                                    (min 255
-                                         (max 0 (round
-                                                 (+ 128
-                                                    (* 128 (/ r spread)))))))
-                              (setf (aref dest dy x 0)
-                                    (random 255)))
-                          (if (< (abs g) 100000)
-                              (setf (aref dest dy x 1)
-                                    (min 255
-                                         (max 0 (round
-                                                 (+ 128
-                                                    (* 128 (/ g spread)))))))
-
-                              (setf (aref dest dy x 1)
-                                    (random 255)))
-                          (if (< (abs b) 100000)
-                              (setf (aref dest dy x 2)
-                                    (min 255
-                                         (max 0 (round
-                                                 (+ 128
-                                                    (* 128 (/ b spread)))))))
-                              (setf (aref dest dy x 2)
-                                    (random 255)))
-                          (setf (aref dest dy x 3)
-                                (min 255
-                                     (max 0 (round
-                                             (+ 128
-                                                (* 128 (/ a spread)))))))
-                       ))
-        (when *postprocess*
-          (postprocess dest))
-        (ecase mode
-          #++(eql *backend* :msdf)
-          (:msdf
-           (setf dest (opticl:convert-image-to-rgb dest)))
-          (:msdf+a))
-        (aa-misc:save-image "/tmp/font2a.pnm" dest :pnm)
-        #++(aa-misc:save-image "/tmp/font2h.pnm" image :pnm)
-        (values dest padding)))))
+                                (setf (aref image j i 0)
+                                      (scale r (facing re x y 0)))
+                                (setf (aref image j i 1)
+                                      (scale g (facing ge x y 1)))
+                                (setf (aref image j i 2)
+                                      (scale b (facing be x y 2))))
+                              (progn
+                                (setf (aref image j i 0)
+                                      (scale (abs a) (aref signs j i)))
+                                (setf (aref image j i 1)
+                                      (scale (abs a) (aref signs j i)))
+                                (setf (aref image j i 2)
+                                      (scale (abs a) (aref signs j i)))
+))
+                          (setf (aref simage j i)
+                                (scale (abs a) (aref signs j i)))
+                          (setf (aref pimage j i)
+                                (scale (abs (pseudo-distance x y ae nil))
+                                       (aref signs j i)))
+                          (when mtsdf
+                            (setf (aref image j i 3)
+                                  (scale (abs a) (aref signs j i)))))))
+      (fix-msdf image simage pimage))))

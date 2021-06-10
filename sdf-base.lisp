@@ -30,7 +30,11 @@
    (origin :initform (rv2 0 0) :reader origin :initarg :origin)
    ;; distance in pixels corresponding to a pixel value of 0 (=
    ;; maximum representable distance in distance field)
-   (spread :initform 2.5 :reader spread :initarg :spread)))
+   (spread :initform 2.5 :reader spread :initarg :spread)
+   ;; parameters for msdf variants
+   (min-angle :initform (- pi 3) :initarg :min-angle :Reader min-angle)
+   (min-sharp-edge-length :initform 0 :initarg :min-sharp-edge-length
+                          :reader min-sharp-edge-length)))
 
 (defmethod cleaned-shape ((sdf sdf))
   (or (%cleaned-shape sdf)
