@@ -216,8 +216,8 @@
 
                (not (= (signum (aref image j i c))
                        (signum (aref image j (1+ i) c))
-                       (signum (aref image (1- j) i c))
-                       (signum (aref image (1- j) (1+ i) c)))))
+                       (signum (aref image (1+ j) i c))
+                       (signum (aref image (1+ j) (1+ i) c)))))
              (l3 (d a b f)
                (setf (aref d 0) (a:lerp f (aref a 0) (aref b 0))
                      (aref d 1) (a:lerp f (aref a 1) (aref b 1))
@@ -230,8 +230,8 @@
              (cell-crosses (j i s)
                (let ((a (ca j i))
                      (b (ca j (1+ i)))
-                     (c (ca (1- j) i))
-                     (d (ca (1- j) (1+ i)))
+                     (c (ca (1+ j) i))
+                     (d (ca (1+ j) (1+ i)))
                      (t1 (ca j i))
                      (t2 (ca j i))
                      (t3 (ca j i)))
@@ -292,12 +292,12 @@
       ;; least 2 different channels on opposite side
 
       #++
-      (loop for j from 1 below wy
+      (loop for j below (1- wy)
             do (loop for i below (1- wx)
                      for m1 = (median j i)
                      for m2 = (median j (1+ i))
-                     for m3 = (median (1- j) i)
-                     for m4 = (median (1- j) (1+ i))
+                     for m3 = (median (1+ j) i)
+                     for m4 = (median (1+ j) (1+ i))
                      when (and (not (aref edge-cells j i))
                                (= (signum m1) (signum m2)
                                   (signum m3) (signum m4))
@@ -324,12 +324,12 @@
                                        (aref image j2 i2 2) p
                                        (aref image j2 i2 3) -100.0)))))
 
-      (loop for j from 1 below wy
+      (loop for j below (1- wy)
             do (loop for i below (1- wx)
                      for m1 = (median j i)
                      for m2 = (median j (1+ i))
-                     for m3 = (median (1- j) i)
-                     for m4 = (median (1- j) (1+ i))
+                     for m3 = (median (1+ j) i)
+                     for m4 = (median (1+ j) (1+ i))
                      for safe = nil
                      for risky = nil
                      when (and (not (aref edge-cells j i))
@@ -390,9 +390,9 @@
                                      (cell-crosses j i (signum m1)))
                               when (not
                                     (or (aref edge-cells j2 i2)
-                                        (aref edge-cells (1+ j2) i2)
+                                        (aref edge-cells (1- j2) i2)
                                         (aref edge-cells j2 (1- i2))
-                                        (aref edge-cells (1+ j2) (1- i2))))
+                                        (aref edge-cells (1- j2) (1- i2))))
                                 do (setf (aref image j2 i2 0) p
                                          (aref image j2 i2 1) p
                                          (aref image j2 i2 2) p
@@ -400,12 +400,12 @@
                                    (format t "update ~s ~s~%" i2 j2))))
 
       #++
-      (loop for j from 1 below wy
+      (loop for j below (1- wy)
             do (loop for i below (1- wx)
                      for m1 = (median j i)
                      for m2 = (median j (1+ i))
-                     for m3 = (median (1- j) i)
-                     for m4 = (median (1- j) (1+ i))
+                     for m3 = (median (1+ j) i)
+                     for m4 = (median (1+ j) (1+ i))
                      when (and (not (aref edge-cells j i))
                                (= (signum m1) (signum m2)
                                   (signum m3) (signum m4))
@@ -416,7 +416,7 @@
                        do (loop
                             with s = (signum m1)
                             for m in (list m1 m2 m3 m4)
-                            for d in '((0 0) (0 -1) (1 0) (1 -1))
+                            for d in '((0 0) (0 1) (1 0) (1 1))
                             for (x y) = d
                             for i2 = (+ x i)
                             for j2 = (+ j y)
@@ -447,12 +447,12 @@
                                 :initial-contents
                                 (list (aref sample-colors j i c)
                                       (aref sample-colors j (1+ i) c)
-                                      (aref sample-colors (1- j) i c)
-                                      (aref sample-colors (1- j) (1+ i) c)))
+                                      (aref sample-colors (1+ j) i c)
+                                      (aref sample-colors (1+ j) (1+ i) c)))
                (list (aref sample-colors j i c)
                      (aref sample-colors j (1+ i) c)
-                     (aref sample-colors (1- j) i c)
-                     (aref sample-colors (1- j) (1+ i) c)))
+                     (aref sample-colors (1+ j) i c)
+                     (aref sample-colors (1+ j) (1+ i) c)))
              (channel-conflict (j i col)
                #++
                (multiple-value-bind (a b c d) (cgroups j i col)
@@ -477,7 +477,7 @@
       ;; in any cells where more than 1 edge group affects a channel,
       ;; clear all but nearest group
       #++(loop
-           for j from 1 below wy
+           for j below (1- wy)
            do (loop
                 for i below (1- wx)
                 do (loop
@@ -494,10 +494,10 @@
                                     ((<= 0 o 10) -100.0)
                                     (t o))))
                      #++(loop
-                          for d in '((0 0) (0 -1) (1 0) (1 -1))
+                          for d in '((0 0) (0 1) (1 0) (1 1))
                           for (x y) = d
                           for i2 = (+ x i)
-                          for j2 = (+ j y)
+                          for j2 = (+ y j)
                           do (let* ((p (aref pimage j2 i2))
                                     (o (aref image j2 i2 3)))
                                (setf    ;(aref image j2 i2 0) p
@@ -511,7 +511,7 @@
                                   (t o))))))))
 
       (loop
-        for j from 1 below wy
+        for j below (1- wy)
         do (loop
              for i below (1- wx)
              for n = (delete-duplicates (remove 0 (append (cgroups j i 0)
@@ -545,7 +545,7 @@
                                   ((<= 0 o 10) -100.0)
                                   (t o)))))
              #++(loop
-                  for d in '((0 0) (0 -1) (1 0) (1 -1))
+                  for d in '((0 0) (0 1) (1 0) (1 1))
                   for (x y) = d
                   for i2 = (+ x i)
                   for j2 = (+ j y)
@@ -577,12 +577,12 @@
                                    :initial-contents
                                    (list (aref sample-colors j i c)
                                          (aref sample-colors j (1+ i) c)
-                                         (aref sample-colors (1- j) i c)
-                                         (aref sample-colors (1- j) (1+ i) c)))
+                                         (aref sample-colors (1+ j) i c)
+                                         (aref sample-colors (1+ j) (1+ i) c)))
                   (list (aref sample-colors j i c)
                         (aref sample-colors j (1+ i) c)
-                        (aref sample-colors (1- j) i c)
-                        (aref sample-colors (1- j) (1+ i) c)))
+                        (aref sample-colors (1+ j) i c)
+                        (aref sample-colors (1+ j) (1+ i) c)))
              #++(channel-conflict (j i col)
                   #++
                   (multiple-value-bind (a b c d) (cgroups j i col)
@@ -714,7 +714,7 @@
          (x1 (* scale (- (aref (origin sdf) 0) 1/2)))
          (y1 (* scale (- (aref (origin sdf) 1) 1/2)))
          (dx scale)
-         (dy (- scale))
+         (dy scale)
          (image (image sdf))
          (simage (make-array (subseq (array-dimensions image) 0 2)
                              :element-type 'single-float :initial-element 0.0))
@@ -889,7 +889,7 @@
                    (cond
                      ((<= x (aref samples/x i))
                       (1- i))
-                     ((and (< (aref samples/x i) x)
+                     ((and (> x (aref samples/x i))
                            (<= x (aref samples/x (1+ i))))
                       i)
                      ((> x (aref samples/x (1+ i)))
@@ -899,19 +899,19 @@
                         #++(- (length samples/x) 2)))))
                (j (y)
                  #++(incf y (/ scale -2))
-                 (let ((j (floor (/ (- y y1) dy))))
+                 (let ((j (floor (/ (+ y y1) dy))))
                    #++(if (> y (aref samples/y j))
                           0             ;(1+ j)
                           j)
                    (cond
-                     ((> y (aref samples/y j))
+                     ((<= y (aref samples/y j))
                       (1- j))
-                     ((and (<= (aref samples/y (1+ j)) y)
-                           (<= y (aref samples/y j)))
-                      (1+ j))
-                     (t #++ (< y (aref samples/y (1+ j)))
-                        (+ 2 j)
-                        #++(1- (length samples/y))))))
+                     ((and (> y (aref samples/y j))
+                           (<= y (aref samples/y (1+ j))))
+                      j)
+                     ((> y (aref samples/y (1+ j)))
+                      (+ j 1))
+                     (t (break "b")))))
                (eval-at (n at)
                  (etypecase n
                    (segment (eval-at/s/fast n at))
@@ -961,9 +961,9 @@
                             (not (minusp c))
                             (not (minusp d)))))
                  (= (signum (aref pimage j i))
-                    (signum (aref pimage (1- j) i))
+                    (signum (aref pimage (1+ j) i))
                     (signum (aref pimage j (1+ i)))
-                    (signum (aref pimage (1- j) (1+ i)))))
+                    (signum (aref pimage (1+ j) (1+ i)))))
                (flag (i j)
                  (when (flat i j)
                    (setf (aref edge-cells j i) t)))
@@ -1043,112 +1043,114 @@
              for j from 0
              do (loop for (nil x) in e
                       do (setf (aref edge-cells j (i x)) t))))
-      #++
-      (fix-msdf image pimage edge-cells)
-      #++
-      (fix-msdf2 image pimage groups sample-colors)
 
-      (progn ;; debug prints
-        (format t "rc = ~%")
-        (loop for j below (array-dimension sample-colors 0)
-              do (loop for i below (array-dimension sample-colors 1)
-                       do (format t " ~2,' d" (aref sample-colors j i 0)))
-                 (format t "~%"))
-        (format t "gc = ~%")
-        (loop for j below (array-dimension sample-colors 0)
-              do (loop for i below (array-dimension sample-colors 1)
-                       do (format t " ~2,' d" (aref sample-colors j i 1)))
-                 (format t "~%"))
-        (format t "bc = ~%")
-        (loop for j below (array-dimension sample-colors 0)
-              do (loop for i below (array-dimension sample-colors 1)
-                       do (format t " ~2,' d" (aref sample-colors j i 2)))
-                 (format t "~%")))
 
-      (progn ;; fix3
-        (let ((m (* 0.8 (sqrt 2))))
-          #++
-          (progn ;; debug prints
-            (format t "dc = ~3f ~3f~%" spread m)
-            (loop for j below (array-dimension image 0)
-                  do (loop for i below (array-dimension image 1)
-                           for dm = 0
-                           do (flet ((d (s j i c)
-                                       (if (array-in-bounds-p image j i c)
-                                           (let ((s2 (aref image j i c)))
-                                             (abs (- s2 s)))
-                                           0.0)))
-                                (loop for c below 3
-                                      for s = (aref image j i c)
-                                      for d = (max (d s j (1- i) c)
-                                                   (d s j (1+ i) c)
-                                                   (d s (1- j) i c)
-                                                   (d s (1+ j) i c))
-                                      do (a:maxf dm d)))
-                              (format t " ~3f" dm))
-                     (format t "~%"))
-            (loop for c below 3
-                  do (loop for j below (array-dimension image 0)
-                           do (loop for i below (array-dimension image 1)
-                                    for dm = 0
-                                    do (flet ((d (s j i c)
-                                                (if (array-in-bounds-p image j i c)
-                                                    (let ((s2 (aref image j i c)))
-                                                      (abs (- s2 s)))
-                                                    0.0)))
-                                         (let* ((s (aref image j i c))
-                                                (mm (max (d s j (1- i) c)
-                                                         (d s j (1+ i) c)
-                                                         (d s (1- j) i c)
-                                                         (d s (1+ j) i c))))
-                                           (cond
-                                             ((> mm (* 1.02 (sqrt 2)))
-                                              (format t " #"))
-                                             ((> mm m)
-                                              (format t " *"))
-                                             ((> mm 1)
-                                              (format t " ~~"))
-                                             (t
-                                              (format t " ."))))))
-                              (format t "~%"))
-                     (format t "~%"))
-            (loop for j below (array-dimension image 0)
-                  do (loop for i below (array-dimension image 1)
-                           for count = 0
-                           do (flet ((d (s j i c)
-                                       (if (array-in-bounds-p image j i c)
-                                           (let ((s2 (aref image j i c)))
-                                             (abs (- s2 s)))
-                                           0.0)))
-                                (loop for c below 3
-                                      for s = (aref image j i c)
-                                      for d = (max (d s j (1- i) c)
-                                                   (d s j (1+ i) c)
-                                                   (d s (1- j) i c)
-                                                   (d s (1+ j) i c))
-                                      when (> d m) do (incf count)))
-                              (format t " ~s" count))
-                     (format t "~%"))
-            (loop for j below (array-dimension image 0)
-                  do (loop for i below (array-dimension image 1)
-                           for dm = 0
-                           do (flet ((d (s j i c)
-                                       (if (array-in-bounds-p image j i c)
-                                           (let ((s2 (aref image j i c)))
-                                             (abs (- s2 s)))
-                                           0.0)))
-                                (loop for c below 1
-                                      for s = (aref image j i c)
-                                      for d = (max (d s j (1- i) c)
-                                                   (d s j (1+ i) c)
-                                                   (d s (1- j) i c)
-                                                   (d s (1+ j) i c))
-                                      do (a:maxf dm (abs s))))
-                              (format t " ~4f" dm))
-                     (format t "~%")))
-          #++
-          (fix-msdf3 image pimage m edge-cells)))
-      #++(fix-msdf4 image pimage sample-colors)
+      (progn ;; error correction
+        (fix-msdf image pimage edge-cells)
+        #++
+        (fix-msdf2 image pimage groups sample-colors)
+        #++
+        (progn ;; debug prints
+          (format t "rc = ~%")
+          (loop for j below (array-dimension sample-colors 0)
+                do (loop for i below (array-dimension sample-colors 1)
+                         do (format t " ~2,' d" (aref sample-colors j i 0)))
+                   (format t "~%"))
+          (format t "gc = ~%")
+          (loop for j below (array-dimension sample-colors 0)
+                do (loop for i below (array-dimension sample-colors 1)
+                         do (format t " ~2,' d" (aref sample-colors j i 1)))
+                   (format t "~%"))
+          (format t "bc = ~%")
+          (loop for j below (array-dimension sample-colors 0)
+                do (loop for i below (array-dimension sample-colors 1)
+                         do (format t " ~2,' d" (aref sample-colors j i 2)))
+                   (format t "~%")))
+
+        (progn ;; fix3
+          (let ((m (* 0.8 (sqrt 2))))
+            #++
+            (progn ;; debug prints
+              (format t "dc = ~3f ~3f~%" spread m)
+              (loop for j below (array-dimension image 0)
+                    do (loop for i below (array-dimension image 1)
+                             for dm = 0
+                             do (flet ((d (s j i c)
+                                         (if (array-in-bounds-p image j i c)
+                                             (let ((s2 (aref image j i c)))
+                                               (abs (- s2 s)))
+                                             0.0)))
+                                  (loop for c below 3
+                                        for s = (aref image j i c)
+                                        for d = (max (d s j (1- i) c)
+                                                     (d s j (1+ i) c)
+                                                     (d s (1- j) i c)
+                                                     (d s (1+ j) i c))
+                                        do (a:maxf dm d)))
+                                (format t " ~3f" dm))
+                       (format t "~%"))
+              (loop for c below 3
+                    do (loop for j below (array-dimension image 0)
+                             do (loop for i below (array-dimension image 1)
+                                      for dm = 0
+                                      do (flet ((d (s j i c)
+                                                  (if (array-in-bounds-p image j i c)
+                                                      (let ((s2 (aref image j i c)))
+                                                        (abs (- s2 s)))
+                                                      0.0)))
+                                           (let* ((s (aref image j i c))
+                                                  (mm (max (d s j (1- i) c)
+                                                           (d s j (1+ i) c)
+                                                           (d s (1- j) i c)
+                                                           (d s (1+ j) i c))))
+                                             (cond
+                                               ((> mm (* 1.02 (sqrt 2)))
+                                                (format t " #"))
+                                               ((> mm m)
+                                                (format t " *"))
+                                               ((> mm 1)
+                                                (format t " ~~"))
+                                               (t
+                                                (format t " ."))))))
+                                (format t "~%"))
+                       (format t "~%"))
+              (loop for j below (array-dimension image 0)
+                    do (loop for i below (array-dimension image 1)
+                             for count = 0
+                             do (flet ((d (s j i c)
+                                         (if (array-in-bounds-p image j i c)
+                                             (let ((s2 (aref image j i c)))
+                                               (abs (- s2 s)))
+                                             0.0)))
+                                  (loop for c below 3
+                                        for s = (aref image j i c)
+                                        for d = (max (d s j (1- i) c)
+                                                     (d s j (1+ i) c)
+                                                     (d s (1- j) i c)
+                                                     (d s (1+ j) i c))
+                                        when (> d m) do (incf count)))
+                                (format t " ~s" count))
+                       (format t "~%"))
+              (loop for j below (array-dimension image 0)
+                    do (loop for i below (array-dimension image 1)
+                             for dm = 0
+                             do (flet ((d (s j i c)
+                                         (if (array-in-bounds-p image j i c)
+                                             (let ((s2 (aref image j i c)))
+                                               (abs (- s2 s)))
+                                             0.0)))
+                                  (loop for c below 1
+                                        for s = (aref image j i c)
+                                        for d = (max (d s j (1- i) c)
+                                                     (d s j (1+ i) c)
+                                                     (d s (1- j) i c)
+                                                     (d s (1+ j) i c))
+                                        do (a:maxf dm (abs s))))
+                                (format t " ~4f" dm))
+                       (format t "~%")))
+
+            (fix-msdf3 image pimage m edge-cells)))
+        #++(fix-msdf4 image pimage sample-colors))
 
       (loop for j below (array-dimension image 0)
             do (loop for i below (array-dimension image 01)

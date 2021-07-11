@@ -11,7 +11,7 @@
    ;; :sdf, :psdf, :msdf, :mtsdf, :smsdf, :smtsdf, etc
    (sdf-type :initarg :sdf-type :reader sdf-type)
    ;; 2d or 3d array of pixel values after sdf is generated. 0,0 is
-   ;; top left of SDF image
+   ;; lower left of SDF image
    (image :reader image :initform nil :initarg :image)
    ;; x or y coordinates of samples in image, as vector of real
    ;; (stored separately to make sure we always get same results in

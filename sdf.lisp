@@ -187,7 +187,7 @@
     (loop for j below wy
           do (loop for i below wx
                    do (setf (aref mask j i)
-                            (aref tmask i (- wy j 1)))))
+                            (aref tmask i j))))
     mask))
 
 (defun make-transpose-mask-for-sdf (sdf)
@@ -196,7 +196,7 @@
          (wy (array-dimension mask1 0))
          (wx (array-dimension mask1 1)))
     (make-transpose-mask wx wy
-                         (samples/y sdf)
+                         (samples/x sdf)
                          (samples/y sdf)
                          (%make-edge-list s2 (samples/x sdf)))))
 
@@ -230,7 +230,7 @@
                   (* 2 scale)))
            ;; find origin in image coords (0,0 = upper left corner of image)
            (ox (- (/ wx 2) cx))
-           (oy (+ (/ wy 2) cy))
+           (oy (- (/ wy 2) cy))
            (image (make-array (list* wy wx (a:ensure-list
                                             (channels-for-type type)))
                               :element-type 'single-float
@@ -245,8 +245,8 @@
         (setf oy (aref origin 1)))
       (loop for j below (length samples/y)
             do (setf (aref samples/y j)
-                     (+ (* (- oy 1/2) scale)
-                        (* j (- scale)))))
+                     (+ (* (- 1/2 oy) scale)
+                        (* j scale))))
 
       (loop for i below (length samples/x)
             do (setf (aref samples/x i)
