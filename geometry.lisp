@@ -235,6 +235,8 @@
                 (* (sf (v2dist v (p-dv (s-p2 s)))) sign)))
              (* a sign)))))))
 
+
+
 (defvar *dump-distance* nil)
 
 (declaim (inline solve-quadratic))
@@ -451,6 +453,15 @@
             ((> rmin 1)
              (ld (p-dv (b2-c1 c)) (p-dv (b2-p2 c))))))))))
 
+
+
+(declaim (inline eval-at/s/fast eval-at/b2/fast))
+
+(defun eval-at/s/fast (s at)
+  (let* ((p0 (p-dv (s-p1 s)))
+         (p1 (p-dv (s-p2 s))))
+    (v2lerp p0 p1 at)))
+
 (defun eval-at/b2 (b at)
   (let* ((p0 (p-rv (b2-p1 b)))
          (p1 (p-rv (b2-c1 b)))
@@ -459,4 +470,14 @@
          (d2 (rv2+ p0 (rv2+ (rv2scale p1 -2) p2))))
     (rv2+ (rv2+ (rv2scale d2 (* at at))
                 (rv2scale d1 (* 2 at)))
+          p0)))
+
+(defun eval-at/b2/fast (b at)
+  (let* ((p0 (p-dv (b2-p1 b)))
+         (p1 (p-dv (b2-c1 b)))
+         (p2 (p-dv (b2-p2 b)))
+         (d1 (v2- p1 p0))
+         (d2 (v2+ p0 (v2+ (v2scale p1 -2) p2))))
+    (v2+ (v2+ (v2scale d2 (* at at))
+              (v2scale d1 (* 2 at)))
           p0)))

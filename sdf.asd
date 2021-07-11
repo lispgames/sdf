@@ -14,6 +14,7 @@
                (:file "shapedesc")
                (:file "sdf-base")
                (:file "edge-list")
+               (:file "msdf")
                (:file "sdf")))
 
 (asdf:defsystem :sdf/ttf
