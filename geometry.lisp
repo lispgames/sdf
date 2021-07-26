@@ -211,6 +211,31 @@
            'single-float)))))
 
 (defun dist/v2-segment/sf* (v s)
+  ;; calculate signed distance and signed pseudo-distance from segment
+  (declare (optimize speed))
+  (check-type s segment)
+  (check-type v v2)
+  (if (point= (s-p1 s) (s-p2 s))
+      (error "can't find signed distance from degenerate segment ~s" s)
+      (multiple-value-bind (pp tt) (%dist/v2-segment/sf v s)
+        (flet ((sf (x) (coerce x 'single-float)))
+          (declare (inline sf))
+          (let* ((a (sf (v2dist v pp)))
+                 (dot (v2x (v2- v pp)
+                           (v2- (p-dv (s-p2 s))
+                                (p-dv (s-p1 s)))))
+                 (sign (if (minusp dot) -1 1)))
+            (values
+             (cond
+               ((<= 0 tt 1)
+                (* a sign))
+               ((< tt 0)
+                (* (sf (v2dist v (p-dv (s-p1 s)))) sign))
+               ((> tt 1)
+                (* (sf (v2dist v (p-dv (s-p2 s)))) sign)))
+             (* a sign)))))))
+
+(defun pdist/v2-segment/sf* (v s)
   ;; calculate signed pseudo-distance from segment
   (declare (optimize speed))
   (check-type s segment)
@@ -235,7 +260,11 @@
                 (* (sf (v2dist v (p-dv (s-p2 s)))) sign)))
              (* a sign)))))))
 
-
+(defun dist/v2-*/sf* (v n)
+  (etypecase n
+    (point (dist/v2-point/sf v n))
+    (segment (dist/v2-segment/sf* v n))
+    (bezier2 (dist/v2-bezier2/sf* v n))))
 
 (defvar *dump-distance* nil)
 

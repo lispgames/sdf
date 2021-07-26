@@ -78,6 +78,38 @@
                                    (* scale spread)))
                              1.0))))))
 
+(defun pseudo-distance-to-shape (shape x y)
+  (let ((d 0) (n nil))
+    (values
+     (multiple-value-bind (d1 n1)
+         (distance-to-shape shape x y)
+       (setf n n1)
+       (setf d d1)
+       (typecase n
+         (point
+          (let ((xy (v2 x y)))
+            (flet ((d (node dir)
+                     (etypecase node
+                       (segment
+                        (dist/v2-line/sf xy node))
+                       (bezier2
+                        (if dir
+                            (dist/v2-line*/sf
+                             xy
+                             (p-dv (b2-p1 node))
+                             (p-dv (b2-c1 node)))
+                            (dist/v2-line*/sf
+                             xy
+                             (p-dv (b2-c1 node))
+                             (p-dv (b2-p2 node))))))))
+              (let* ((next (next shape n))
+                     (prev (prev shape n))
+                     (a (d prev nil))
+                     (b (d next t)))
+                (max (abs a) (abs b))))))
+         (t d)))
+     n d)))
+
 (defun map-psdf (sdf thunk)
   (let* ((scale (pixel-scale sdf))
          (shape (cleaned-shape sdf))
@@ -88,45 +120,18 @@
           for y across (samples/y sdf)
           do (loop for i below (array-dimension image 1)
                    for x across (samples/x sdf)
-                   for d = 0
-                   for n = nil
-                   for pd = (multiple-value-bind (d1 n1)
-                                (distance-to-shape shape x y)
-                              (setf n n1)
-                              (setf d d1)
-                              (typecase n
-                                (point
-                                 (let ((xy (v2 x y)))
-                                   (flet ((d (node dir)
-                                            (etypecase node
-                                              (segment
-                                               (dist/v2-line/sf xy node))
-                                              (bezier2
-                                               (if dir
-                                                   (dist/v2-line*/sf
-                                                    xy
-                                                    (p-dv (b2-p1 node))
-                                                    (p-dv (b2-c1 node)))
-                                                   (dist/v2-line*/sf
-                                                    xy
-                                                    (p-dv (b2-c1 node))
-                                                    (p-dv (b2-p2 node))))))))
-                                     (let* ((next (next shape n))
-                                            (prev (prev shape n))
-                                            (a (d prev nil))
-                                            (b (d next t)))
-                                       (max (abs a) (abs b))))))
-                                (t d)))
-                   do (funcall thunk j i
-                               (float
-                                (* (if (zerop (aref signs j i)) -1 1)
-                                   (/ d scale))
-                                1.0)
-                               (float
-                                (* (if (zerop (aref signs j i)) -1 1)
-                                   (/ pd scale))
-                                1.0)
-                               n)))))
+                   do (multiple-value-bind (pd d n)
+                          (pseudo-distance-to-shape shape x y)
+                        (funcall thunk j i
+                                 (float
+                                  (* (if (zerop (aref signs j i)) -1 1)
+                                     (/ d scale))
+                                  1.0)
+                                 (float
+                                  (* (if (zerop (aref signs j i)) -1 1)
+                                     (/ pd scale))
+                                  1.0)
+                                 n))))))
 
 (defun render-sdf/psdf (sdf)
   (let ((image (image sdf))
