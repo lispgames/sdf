@@ -1,0 +1,73 @@
+* init
+** if correction mode is edge-priority
+*** mark 4 samples of cell containing a corner of shape as 'protected'
+*** for each pair of adjacent samples:
+    (horizontal, vertical, or diagonal pairs)
+**** for each channel
+***** determine if channel contributes to an edge between those texels
+****** find position where specified channel of those texels, crosses 0
+****** if it is between the 2 texels:
+******* interpolate the texels at that position
+******* channel contributes to edge iff median of interpolated value is in specified channel of interpolated value
+**** for each sample in pair
+***** if a channel that contributes to an edge is not the median of that sample:
+****** mark the sample as protected
+** if config is edge-only
+*** mark all samples as 'protected'
+* if
+
+  distance check mode is do-not-check-distance
+
+  or
+
+  distance check mode is check-distance-at-edge and correction mode is edge-only
+** run find-error (below) with base artifact classifier
+** if distance check mode is check-distance-at-edge
+   mark all samples as 'protected'
+* if distance check mode is always-check-distance or check-distance-at-edge
+** if overlap check is supported
+*** run find-errors w/ shape distance checker w/ overlapping contour combiner
+** if overlap check not supported
+*** run find errors w/ shape distance checker w/ simple contour combiner
+* find error
+** at each sample, mark it as 'error' if it has artifacts with adjacent sample
+   (check all 8 adjacent samples that are in bounds for sdf)
+*** horizontal/vertical:
+**** if texel is further from edge of pair:
+***** return true if for any pair of channels:
+      (RG,GB,RB)
+****** at point between samples where 2 channels have same value:
+       ignoring cases where that point is eactly at a sample (or
+       within some epsilon)
+******* for base artifact checker, either:
+******** median interpolated at that point has different sign from sample medians
+******** or sample being tested isn't protected and is not between sample medians
+******** and interpolated median is a plausible distance from sample medians
+         (a distance field sampled every N units can at most change by
+         N between adjacent samples. So for a point between two
+         samples,if it is T units from first sample, the interpolated
+         distance at that point must be within T of first sample and
+         N-T from 2nd)
+
+         (not exact, allow within N% of exact distance)
+******* for distance checker w/ contour combiner:
+******** run base checker, and if it got to 3rd test and distance was plausible:
+********* calculate exact distance to shape at that point
+********* calculate interpolated distance from msdf
+********* calculate interpolated distance if sample were flattened
+********* mark sample if new distance is closer to exact distance
+*** diagonal
+**** same as horiz/vert, except:
+     bilinear interpolation, so need to solve quadratic to find point
+      (and possibly 2 points
+
+     also check for a local extreme of each channel of the pair being
+     tested along the diagonal, and run artifact check routine with
+     the interpolated value at that extreme instead of one of
+     corresponding sample
+
+     (ex. if samples are at 0 and 1, test point is at 0.5, channel
+     maximum is 0.7, check with 0 and 0.7 instead of 0 and 1)
+* apply error correction
+** for every sample
+*** if marked 'error', set all channels to median
