@@ -39,10 +39,11 @@
 ****** at point between samples where 2 channels have same value:
        ignoring cases where that point is eactly at a sample (or
        within some epsilon)
-******* for base artifact checker, either:
-******** median interpolated at that point has different sign from sample medians
-******** or sample being tested isn't protected and is not between sample medians
-******** and interpolated median is a plausible distance from sample medians
+******* for base artifact checker:
+******** either
+********* median interpolated at that point has different sign from sample medians
+********* or sample being tested isn't protected and is not between sample medians
+******** and interpolated median is not a plausible distance from sample medians
          (a distance field sampled every N units can at most change by
          N between adjacent samples. So for a point between two
          samples,if it is T units from first sample, the interpolated
