@@ -1,3 +1,16 @@
+* default is mode=edge-priority, distance-check-mode=check-distance-at-edge
+  default = auto = auto-mixed = mixed
+** auto-fast is mode=edge-priority, dcm=do-not-check-distance
+   auto-fast = fast
+** auto-full is mode=edge-priority dcm=always-check-distance
+   auto-full = full
+** distance is mode=indiscriminate, dcm = do-not-check-distance
+   distance = distance-fast = indiscriminate = indiscriminate-fast
+** distance-full is mode=indiscriminate, dcm = always-check-distance
+   distance-full = indiscriminate-full
+** edge-fast is mode=edge-only, dcm=do-not-check-distance
+** edge-full is mode=edge-only, dcm=always-check-distance
+   edge-full = edge
 * init
 ** if correction mode is edge-priority
 *** mark 4 samples of cell containing a corner of shape as 'protected'
