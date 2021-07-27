@@ -887,7 +887,6 @@
          (facing (determine-facing shape edges/y))
          (edge-cells (make-array (array-dimensions pimage)
                                  :initial-element nil))
-         #++
          (corner-cells (make-array (array-dimensions pimage)
                                    :initial-element nil)))
 
@@ -956,7 +955,7 @@
           :if-exists :supersede)
          (uiop:run-program
           (print
-           (format nil "/msys64/usr/bin/time msdfgen mtsdf -autoframe -pxrange ~a -scale ~a -size ~a ~a -o c:/tmp/shapedesc1.png -testrender c:/tmp/shapedesc1-r.png 256 256  -shapedesc c:/tmp/shapedesc1.txt"
+           (format nil "/msys64/usr/bin/time msdfgen msdf -autoframe -pxrange ~a -scale ~a -size ~a ~a -o c:/tmp/shapedesc1.png -testrender c:/tmp/shapedesc1-r.png 256 256  -shapedesc c:/tmp/shapedesc1.txt"
                    (* 2 spread) (float (/ scale))
                    (array-dimension image 1)
                    (array-dimension image 0)))
@@ -1203,7 +1202,6 @@
                                                   (j (p-dy n))
                                                   (i (p-dx n)))
                                             t)
-                                   #++
                                    (setf (aref corner-cells
                                                (j (p-dy n))
                                                (i (p-dx n)))
@@ -1276,8 +1274,10 @@
                 do (loop for i below (array-dimension sample-colors 1)
                          do (format t " ~2,' d" (aref sample-colors j i 2)))
                    (format t "~%")))
+      #++
       (fix-msdf5 image pimage sample-colors)
       #++(fix-msdf6 image pimage sample-colors)
+      (fix-msdf7 image pimage corner-cells)
       #++
       (progn ;; error correction
         (fix-msdf image pimage edge-cells)
