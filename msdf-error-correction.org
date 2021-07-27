@@ -16,15 +16,16 @@
 *** mark 4 samples of cell containing a corner of shape as 'protected'
 *** for each pair of adjacent samples:
     (horizontal, vertical, or diagonal pairs)
-**** for each channel
-***** determine if channel contributes to an edge between those texels
-****** find position where specified channel of those texels, crosses 0
-****** if it is between the 2 texels:
-******* interpolate the texels at that position
-******* channel contributes to edge iff median of interpolated value is in specified channel of interpolated value
-**** for each sample in pair
-***** if a channel that contributes to an edge is not the median of that sample:
-****** mark the sample as protected
+**** if sum of pseudodistances at sample is less than distance between samples
+***** for each channel
+****** determine if channel contributes to an edge between those texels
+******* find position where specified channel of those texels, crosses 0
+******* if it is between the 2 texels:
+******** interpolate the texels at that position
+******** channel contributes to edge iff median of interpolated value is in specified channel of interpolated value
+***** for each sample in pair
+****** if a channel that contributes to an edge is not the median of that sample:
+******* mark the sample as protected
 ** if config is edge-only
 *** mark all samples as 'protected'
 * if
