@@ -1202,10 +1202,12 @@
                                                   (j (p-dy n))
                                                   (i (p-dx n)))
                                             t)
-                                   (setf (aref corner-cells
-                                               (j (p-dy n))
-                                               (i (p-dx n)))
-                                         t)
+                                   (when (> (abs (car (gethash n corners)))
+                                            (min-angle sdf))
+                                    (setf (aref corner-cells
+                                                (j (p-dy n))
+                                                (i (p-dx n)))
+                                          t))
                                    #++(loop
                                         for di in '(-0.5 0.0 0.5)
                                         for i = (i (+ (* scale di) (p-dx n)))
