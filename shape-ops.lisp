@@ -114,58 +114,6 @@
               (end-contour)))))))
 
 
-(defun %sort-edges (shape)
-  (let ((edges nil))
-    (map-contour-segments
-     shape (lambda (c n e)
-             (declare (ignore e))
-             (etypecase n
-               (point)
-               (segment
-                (let ((x1 (s-dx1 n))
-                      (x2 (s-dx2 n))
-                      (y1 (s-dy1 n))
-                      (y2 (s-dy2 n)))
-                  (list (min y1 y2) (max y1 y2) (min x1 x2) (max x1 x2) c n)))
-               (bezier2
-                (let ((x1 (b2-dx1 n))
-                      (x2 (b2-dx2 n))
-                      (x3 (b2-dxc n))
-                      (y1 (b2-dy1 n))
-                      (y2 (b2-dy2 n))
-                      (y3 (b2-dyc n)))
-                  (list (min y1 y2 y3) (max y1 y2 y3)
-                        (min x1 x2 x3) (max x1 x2 x3)
-                        c n))))))
-    (sort edges '< :key 'car)))
-
-#++
-(defun simplify-shape (shape)
-  (let ((edges (%sort-edges shape))
-        (live nil)
-        (hits nil))
-    (loop for e in edges
-          for (y1 y2 x1 x2 c n) = e
-          do (setf live
-                   (cons e
-                         (loop for e2 in live
-                               for (y3 y4 x3 x4 c2 n2) = e2
-                               when (>= y4 y1)
-                                 collect e2
-                                 and (when (or (<= x1 x3 x2)
-                                               (<= x1 x4 x2)))))))))
-
-(defun simplify-shape (shape &key samples)
-  (declare (ignorable samples))
-  #++(break "shape ~s" shape)
-
-  #++(let ((edges (%make-edge-list shape samples)))
-       (declare (ignorable edges))
-       (break "edges ~s~%" edges)
-       shape)
-  shape)
-
-
 (defun clean-shape-old (shape &key (verbose *dump*))
   ;; return a copy of SHAPE with degenerate contours, curves,
   ;; segments, and points removed
@@ -477,6 +425,58 @@
             (remove-if 'degenerate-edit-contour (contours es))))
 
     (edit-shape-to-shape es)))
+
+(defun %sort-edges (shape)
+  (let ((edges nil))
+    (map-contour-segments
+     shape (lambda (c n e)
+             (declare (ignore e))
+             (etypecase n
+               (point)
+               (segment
+                (let ((x1 (s-dx1 n))
+                      (x2 (s-dx2 n))
+                      (y1 (s-dy1 n))
+                      (y2 (s-dy2 n)))
+                  (list (min y1 y2) (max y1 y2) (min x1 x2) (max x1 x2) c n)))
+               (bezier2
+                (let ((x1 (b2-dx1 n))
+                      (x2 (b2-dx2 n))
+                      (x3 (b2-dxc n))
+                      (y1 (b2-dy1 n))
+                      (y2 (b2-dy2 n))
+                      (y3 (b2-dyc n)))
+                  (list (min y1 y2 y3) (max y1 y2 y3)
+                        (min x1 x2 x3) (max x1 x2 x3)
+                        c n))))))
+    (sort edges '< :key 'car)))
+
+#++
+(defun simplify-shape (shape)
+  (let ((edges (%sort-edges shape))
+        (live nil)
+        (hits nil))
+    (loop for e in edges
+          for (y1 y2 x1 x2 c n) = e
+          do (setf live
+                   (cons e
+                         (loop for e2 in live
+                               for (y3 y4 x3 x4 c2 n2) = e2
+                               when (>= y4 y1)
+                                 collect e2
+                                 and (when (or (<= x1 x3 x2)
+                                               (<= x1 x4 x2)))))))))
+
+(defun simplify-shape (shape &key samples)
+  (declare (ignorable samples))
+  #++(break "shape ~s" shape)
+
+  #++(let ((edges (%make-edge-list shape samples)))
+       (declare (ignorable edges))
+       (break "edges ~s~%" edges)
+       shape)
+  shape)
+
 
 (defun point-normal (shape point)
   (labels ((seg-tangent (s)
