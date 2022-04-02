@@ -24,7 +24,7 @@
   :version "0.0.1"
   :author "Bart Botta <00003b at gmail.com>"
   :license "MIT"
-  :depends-on (sdf/base zpb-ttf cl-paths-ttf binpack)
+  :depends-on (sdf/base zpb-ttf cl-paths-ttf)
   :serial t
   :components ((:file "packages-ttf")
                (:file "metrics")
@@ -35,7 +35,7 @@
   :version "0.0.1"
   :author "Bart Botta <00003b at gmail.com>, Pavel Korolev <dev@borodust.org>"
   :license "MIT"
-  :depends-on (sdf/base sdf/ttf opticl)
+  :depends-on (sdf/base sdf/ttf opticl binpack/2)
   :serial t
   :components ((:file "packages")
                (:file "api")))
