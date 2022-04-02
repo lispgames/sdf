@@ -108,7 +108,7 @@
                      (b (d next t)))
                 (max (abs a) (abs b))))))
          (t d)))
-     n d)))
+     d n)))
 
 (defun map-psdf (sdf thunk)
   (let* ((scale (pixel-scale sdf))
