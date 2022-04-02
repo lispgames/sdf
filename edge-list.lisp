@@ -136,8 +136,7 @@
                          do (error "couldn't find next Y value?")))
                (prev-y (n0 y0)
                  (loop for n = (prev shape n0) then (prev shape n)
-                       do #++(format t "search prev ~s? ~s~%" y0 n)
-                          (etypecase n
+                       do (etypecase n
                             (point
                              (when (/= (p-ry n) y0)
                                (return-from prev-y (p-ry n))))
