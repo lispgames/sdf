@@ -6,8 +6,12 @@
   ;; includes bounding box and vector data for shape (coordinate
   ;; system is assumed to be Y-up)
   ((shape :initarg :shape :reader shape)
+   ;; version of SHAPE with degenerate segments/curves, etc, removed
    (cleaned-shape :initarg :cleaned-shape :initform nil
                   :accessor %cleaned-shape)
+   ;; version of CLEANED-SHAPE with overlapping contours combined
+   (simplified-shape :initarg :simplified-shape :initform nil
+                     :accessor %simplified-shape)
    ;; :sdf, :psdf, :msdf, :mtsdf, :smsdf, :smtsdf, etc
    (sdf-type :initarg :sdf-type :reader sdf-type)
    ;; 2d or 3d array of pixel values after sdf is generated. 0,0 is
@@ -40,3 +44,8 @@
   (or (%cleaned-shape sdf)
       (setf (%cleaned-shape sdf)
             (clean-shape (shape sdf)))))
+
+(defmethod simplified-shape ((sdf sdf))
+  (or (%simplified-shape sdf)
+      (setf (%simplified-shape sdf)
+            (simplify-shape (cleaned-shape sdf) :samples (samples/y sdf)))))
