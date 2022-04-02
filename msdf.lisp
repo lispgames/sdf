@@ -2,6 +2,8 @@
 
 ;; render msdf from a SHAPE
 
+(defparameter *gen-ref* nil)
+(defparameter *limit-msdf-range* t)
 
 (defun collapse-short-edges (shape corner-angles min-length min-angle)
   ;; for any edges in shape estimated to be shorter than MIN-LENGTH
@@ -39,7 +41,7 @@
                (from (if (< (abs a1) (abs a2)) p1 p2)))
           (when (and (< l min-length)
                      (and (> (abs a1) min-angle)
-                         (> (abs a2) min-angle)))
+                          (> (abs a2) min-angle)))
             (incf (car (gethash to corner-angles))
                   (car (gethash from corner-angles)))
             (setf (car (gethash from corner-angles)) 0.0))))
@@ -73,6 +75,7 @@
                      (list (or (first m) (first old))
                            (or (second m) (second old))
                            (or (third m) (third old)))))))
+      ;; assign colors
       (map-contour-segments
        shape (lambda (c n e)
                (declare (ignore c))
@@ -91,7 +94,56 @@
                    ((> (abs (car (gethash (next shape n) corner-angles)))
                        min-angle)
                     (incf group)
-                    (setf i (mod (1+ i) 2))))))))
+                    (setf i (mod (1+ i) 2)))))))
+      ;; fix teardrops
+      (map-contour-segments
+       shape (lambda (c n e)
+               (declare (ignore c e))
+               ;; if we have a point that is a corner and has same color
+               ;; assignment on both sides, it should be the only corner
+               ;; of the contour. In that case, we should assign a
+               ;; different color to part of the contour to preserve the
+               ;; corner/
+               (when (and (typep n 'point)
+                          (> (abs (car (gethash n corner-angles)))
+                             min-angle)
+                          (eql (gethash (prev shape n) colors)
+                               (gethash (next shape n) colors)))
+                 #++(format t "------------- split teardrop~%")
+                 (let* ((n2 (prev2 shape n))
+                        (d2 (v2dist (p-dv n2) (p-dv n)))
+                        (c1 (gethash (prev shape n) colors)))
+                   #++(format t " start @ ~s~%" n)
+                   #++(format t "  n2 = ~s~%   @ ~s~%" n2 d2)
+                   (loop for x = (prev2 shape n2) then (prev2 shape x)
+                         for e = (next shape x)
+                         ;; if we have multiple colors on contour, but
+                         ;; same colors at a corner, something is wrong
+                         do (assert (equalp (gethash e colors) c1))
+                            ;; X should be iterating POINTs, so if E is
+                            ;; our original POINT, something is wrong
+                            (assert (not (eql e n)))
+                         #++(format t " -check ~s~%" x)
+                         until (eql x n)
+                         do (let ((d3 (v2dist (p-dv x) (p-dv n))))
+                              ;; pick point on contour furthest from
+                              ;; corner
+                              (when (> d3 d2)
+                                (setf n2 x
+                                      d2 d3))))
+                   (assert (not (eql d2 n)))
+                   ;; split at furthest point
+                   (incf group)
+                   #++(format t "splitting at ~s~%" n2)
+                   (loop with i = (mod (1+ (or (position c1 masks) 2)) 3)
+                         for x = n2 then (next2 shape x)
+                         for e = (next shape x)
+                         until (eql x n)
+                         do (setf (gethash e colors) (aref masks i))
+                            (setf (gethash group groups) (aref masks i))
+                            (setf (gethash e groups) group)
+                            (set-point (prev shape e) (aref masks i))
+                            (set-point (next shape e) (aref masks i))))))))
     (list colors groups)))
 
 (defun determine-facing (shape edges)
@@ -689,19 +741,19 @@
                       (not (zerop (aref groups j1 i1 c)))
                       (not (zerop (aref groups j2 i2 c))))
                  #++(format t "~s,~s,~s - ~s,~s: s ~s ~s, g ~s ~s~%"
-                         c i1 j1 i2 j2
-                         (floor (signum (- a (aref pimage j1 i1))))
-                         (floor (signum (- b (aref pimage j2 i2))))
-                         (aref groups j1 i1 c)
-                         (aref groups j2 i2 c))
+                            c i1 j1 i2 j2
+                            (floor (signum (- a (aref pimage j1 i1))))
+                            (floor (signum (- b (aref pimage j2 i2))))
+                            (aref groups j1 i1 c)
+                            (aref groups j2 i2 c))
                  #++
                  (format t " ~s@~s~% ~s@~s~%"
                          a (aref pimage j1 i1)
                          b (aref pimage j2 i2))
                  ;; flag whichever is further
                  (if (> (abs a) (abs b))
-                   (setf (aref flags j1 i1 c) 1)
-                   (setf (aref flags j2 i2 c) 1))))))
+                     (setf (aref flags j1 i1 c) 1)
+                     (setf (aref flags j2 i2 c) 1))))))
       (loop for j below (1- wy)
             do (loop for i below (1- wx)
                      do (loop for c below 3
@@ -763,8 +815,8 @@
                          (aref groups j3 i3 c)))
                  ;; flag whichever is further
                  (if (> (abs a) (abs b))
-                   (setf (aref flags j1 i1 c) 1)
-                   (setf (aref flags j2 i2 c) 1))))))
+                     (setf (aref flags j1 i1 c) 1)
+                     (setf (aref flags j2 i2 c) 1))))))
       (loop for j from 1 below (- wy 2)
             do (loop for i from 1 below (- wx 2)
                      do (loop for c below 3
@@ -805,7 +857,7 @@
                              :element-type 'single-float :initial-element 0.0))
          (sample-colors (make-array (array-dimensions image)
                                     :element-type 'fixnum :initial-element 0))
-         (shape (cleaned-shape sdf))
+         (shape (simplified-shape sdf))
          (corners1 (corner-angles shape))
          (min-length (min-sharp-edge-length sdf))
          (corners (if (and min-length (not (zerop min-length)))
@@ -852,6 +904,10 @@
                     prev)
                    ((nth c nmask)
                     next)
+                   ((equalp pmask nmask)
+                    ;; not a sharp corner, just pick one (happens when
+                    ;; we split a contour with only 1 corner)
+                    prev)
                    (t (break "??")))))
              (pseudo-distance (x y n c)
                (etypecase n
@@ -883,41 +939,42 @@
                      (if (nth c (gethash nn colors))
                          (next shape n) (prev shape n))))))
 
-      (time
-       (progn
-         (a:write-string-into-file
-          (serialize-shape shape :allow-ratios nil :edge-colors colors)
-          "c:/tmp/shapedesc1.txt"
-          :if-exists :supersede)
-         (uiop:run-program
-          (print
-           (format nil "/msys64/usr/bin/time msdfgen msdf -autoframe -pxrange ~a -scale ~a -size ~a ~a -o c:/tmp/shapedesc1.png -testrender c:/tmp/shapedesc1-r.png 256 256  -shapedesc c:/tmp/shapedesc1.txt"
-                   (* 2 spread) (float (/ scale))
-                   (array-dimension image 1)
-                   (array-dimension image 0)))
-          :output t
-          :error-output t)
-         (uiop:run-program
-          (print
-           (format nil "msdfgen -autoframe -pxrange ~a -scale ~a -size ~a ~a -o c:/tmp/shapedesc1ne.png -testrender c:/tmp/shapedesc1ne-r.png 256 256  -shapedesc c:/tmp/shapedesc1.txt -errorcorrection 0"
-                   (* 2 spread) (float (/ scale))
-                   (array-dimension image 1)
-                   (array-dimension image 0)))
-          :output t
-          :error-output t)
-         (a:write-string-into-file
-          (serialize-shape shape :allow-ratios nil)
-          "c:/tmp/shapedesc1nc.txt"
-          :if-exists :supersede)
-         (uiop:run-program
-          (print
-           (format nil "/msys64/usr/bin/time msdfgen  -autoframe -pxrange ~a -scale ~a -size ~a ~a -o c:/tmp/shapedesc1nc.png -testrender c:/tmp/shapedesc1nc-r.png 256 256  -shapedesc c:/tmp/shapedesc1nc.txt -printmetrics"
-                   (* 2 spread) (float (/ scale))
-                   (array-dimension image 1)
-                   (array-dimension image 0)))
-          :output t
-          :error-output t)))
-      (terpri)
+      (when *gen-ref*
+        (time
+         (progn
+           (a:write-string-into-file
+            (serialize-shape shape :allow-ratios nil :edge-colors colors)
+            "c:/tmp/shapedesc1.txt"
+            :if-exists :supersede)
+           (uiop:run-program
+            (print
+             (format nil "/msys64/usr/bin/time msdfgen msdf -autoframe -pxrange ~a -scale ~a -size ~a ~a -o c:/tmp/shapedesc1.png -testrender c:/tmp/shapedesc1-r.png 256 256  -shapedesc c:/tmp/shapedesc1.txt " ;-errorcorrection auto-fast
+                     (* 2 spread) (float (/ scale))
+                     (array-dimension image 1)
+                     (array-dimension image 0)))
+            :output t
+            :error-output t)
+           (uiop:run-program
+            (print
+             (format nil "msdfgen -autoframe -pxrange ~a -scale ~a -size ~a ~a -o c:/tmp/shapedesc1ne.png -testrender c:/tmp/shapedesc1ne-r.png 256 256  -shapedesc c:/tmp/shapedesc1.txt -errorcorrection 0"
+                     (* 2 spread) (float (/ scale))
+                     (array-dimension image 1)
+                     (array-dimension image 0)))
+            :output t
+            :error-output t)
+           (a:write-string-into-file
+            (serialize-shape shape :allow-ratios nil)
+            "c:/tmp/shapedesc1nc.txt"
+            :if-exists :supersede)
+           (uiop:run-program
+            (print
+             (format nil "/msys64/usr/bin/time msdfgen  -autoframe -pxrange ~a -scale ~a -size ~a ~a -o c:/tmp/shapedesc1nc.png -testrender c:/tmp/shapedesc1nc-r.png 256 256  -shapedesc c:/tmp/shapedesc1nc.txt -printmetrics"
+                     (* 2 spread) (float (/ scale))
+                     (array-dimension image 1)
+                     (array-dimension image 0)))
+            :output t
+            :error-output t)))
+        (terpri))
       (loop with wy = (array-dimension image 0)
             for j below wy
             for rs = 0
@@ -967,22 +1024,22 @@
                                 (setf (aref sample-colors j i 2)
                                       (gethash be groups))
                                 #++(when (and (<= sdf-scratch::*kx* i
-                                               (1+ sdf-scratch::*kx*))
-                                           (<= sdf-scratch::*ky* j
-                                               (1+ sdf-scratch::*ky*)))
-                                  (format t "@ ~s,~s~%" i j)
-                                  (format t " r = ~s ~s = ~s~%"
-                                          (gethash re groups)
-                                          (gethash re colors)
-                                          re)
-                                  (format t " g = ~s ~s = ~s~%"
-                                          (gethash ge groups)
-                                          (gethash ge colors)
-                                          ge)
-                                  (format t " b = ~s ~s = ~s~%"
-                                          (gethash be groups)
-                                          (gethash be colors)
-                                          be)))
+                                                  (1+ sdf-scratch::*kx*))
+                                              (<= sdf-scratch::*ky* j
+                                                  (1+ sdf-scratch::*ky*)))
+                                     (format t "@ ~s,~s~%" i j)
+                                     (format t " r = ~s ~s = ~s~%"
+                                             (gethash re groups)
+                                             (gethash re colors)
+                                             re)
+                                     (format t " g = ~s ~s = ~s~%"
+                                             (gethash ge groups)
+                                             (gethash ge colors)
+                                             ge)
+                                     (format t " b = ~s ~s = ~s~%"
+                                             (gethash be groups)
+                                             (gethash be colors)
+                                             be)))
                               (progn
                                 (setf (aref image j i 0)
                                       (scale (abs a) (aref signs j i)))
@@ -1053,10 +1110,9 @@
                                  (= (cdr a) (1- (cdr b)))))
                      (and (= (cdr a) (cdr b))
                           (<= (1- (car b)) (car a) (1+ (car b)))
-                          #++(or (= (cAr a) (car b))
-                                        ;(= (cAr a) (1+ (car b)))
-                                        ;(= (car a) (1- (car b)))
-                                 ))))
+                          #++(or (= (car a) (car b))
+                                        #++(= (car a) (1+ (car b)))
+                                        #++(= (car a) (1- (car b)))))))
                #++(nneg (x)
                     (> x -0.0001))
                #++(npos (x)
@@ -1095,7 +1151,7 @@
                    (progn
                      (flag (car sij) (cdr sij))
                      (flag (car eij) (cdr eij)))
-                   (break "~s?" d)
+                   #++(break "~s?" d)
                    (return-from rsubdivide t))
                  (if (ij~ sij eij)
                      #++(setf (aref edge-cells (cdr sij) (car sij)) t
@@ -1109,7 +1165,7 @@
                             (mij (cons (i (vx mid)) (j (vy mid)))))
                        (declare (dynamic-extent mij))
                        (when (or (= mat start) (= mat end))
-                         (break "~s" d))
+                         #++(break "~s" d))
                        (unless (or (= mat start) (= mat end))
                          (unless (ij= mij sij)
                            (rsubdivide n start mat sij mij (incf d)))
@@ -1140,10 +1196,10 @@
                                             t)
                                    (when (> (abs (car (gethash n corners)))
                                             (min-angle sdf))
-                                    (setf (aref corner-cells
-                                                (j (p-dy n))
-                                                (i (p-dx n)))
-                                          t))
+                                     (setf (aref corner-cells
+                                                 (j (p-dy n))
+                                                 (i (p-dx n)))
+                                           t))
                                    #++(loop
                                         for di in '(-0.5 0.0 0.5)
                                         for i = (i (+ (* scale di) (p-dx n)))
@@ -1167,55 +1223,55 @@
              for j from 0
              do (loop for (nil x) in e
                       do (setf (aref edge-cells j (i x)) t))))
-      ;(setf (aref image 21 27 1) (aref pimage 21 27))
-      ;(setf (aref image 21 28 1) (aref pimage 21 28))
-      ;(setf (aref image 21 29 1) (aref pimage 21 29))
-      ;(setf (aref image 21 30 1) (aref pimage 21 30))
+                                        ;(setf (aref image 21 27 1) (aref pimage 21 27))
+                                        ;(setf (aref image 21 28 1) (aref pimage 21 28))
+                                        ;(setf (aref image 21 29 1) (aref pimage 21 29))
+                                        ;(setf (aref image 21 30 1) (aref pimage 21 30))
       #++(let ((y1 17 #++ 21)
-            (dy 10)
-            (x1 20)
-            (dx 13))
-        (loop for c below 3
-              do (format t "~s @ ~s,~s:~%" c x1 y1)
-                 (loop for j from (+ y1 dy) downto y1
-                       do (loop for i from x1 upto (+ x1 dx)
-                                do (format t " ~s" (aref sample-colors j i c))
-                                   ;(setf (aref image j i  0) -10.0)
-                                   ;(setf (aref image j i  1) 10.0)
-                                   ;(setf (aref image j i  2) 10.0)
-                                   ;(setf (aref image j i  3) 10.0)
-                                )
-                          (format t " | ")
-                          (loop for i from x1 upto (+ x1 dx)
-                                do (format t " ~2,' d"
-                                           (floor
-                                            (signum (- (aref image j i c)
-                                                       (aref pimage j i))))))
-                          (format t "~%"))))
-      (format t "4 = ~s, 6 = ~s~%" (gethash 4 groups) (gethash 6 groups))
-        (progn ;; debug prints
-          (format t "rc = ~%")
-          (loop for j from (1- (array-dimension sample-colors 0))
-                downto 0
-                do (loop for i below (array-dimension sample-colors 1)
-                         do (format t " ~2,' d" (aref sample-colors j i 0)))
-                   (format t "~%"))
-          (format t "gc = ~%")
-          (loop for j from (1- (array-dimension sample-colors 0))
-                downto 0
-                do (loop for i below (array-dimension sample-colors 1)
-                         do (format t " ~2,' d" (aref sample-colors j i 1)))
-                   (format t "~%"))
-          (format t "bc = ~%")
-          (loop for j from (1- (array-dimension sample-colors 0))
-                downto 0
-                do (loop for i below (array-dimension sample-colors 1)
-                         do (format t " ~2,' d" (aref sample-colors j i 2)))
-                   (format t "~%")))
+               (dy 10)
+               (x1 20)
+               (dx 13))
+           (loop for c below 3
+                 do (format t "~s @ ~s,~s:~%" c x1 y1)
+                    (loop for j from (+ y1 dy) downto y1
+                          do (loop for i from x1 upto (+ x1 dx)
+                                   do (format t " ~s" (aref sample-colors j i c))
+                                        #++(setf (aref image j i  0) -10.0)
+                                        #++(setf (aref image j i  1) 10.0)
+                                        #++(setf (aref image j i  2) 10.0)
+                                        #++(setf (aref image j i  3) 10.0))
+                             (format t " | ")
+                             (loop for i from x1 upto (+ x1 dx)
+                                   do (format t " ~2,' d"
+                                              (floor
+                                               (signum (- (aref image j i c)
+                                                          (aref pimage j i))))))
+                             (format t "~%"))))
+      #++(format t "4 = ~s, 6 = ~s~%" (gethash 4 groups) (gethash 6 groups))
+      #++
+      (progn ;; debug prints
+        (format t "rc = ~%")
+        (loop for j from (1- (array-dimension sample-colors 0))
+              downto 0
+              do (loop for i below (array-dimension sample-colors 1)
+                       do (format t "~2,' d" (aref sample-colors j i 0)))
+                 (format t "~%"))
+        (format t "gc = ~%")
+        (loop for j from (1- (array-dimension sample-colors 0))
+              downto 0
+              do (loop for i below (array-dimension sample-colors 1)
+                       do (format t "~2,' d" (aref sample-colors j i 1)))
+                 (format t "~%"))
+        (format t "bc = ~%")
+        (loop for j from (1- (array-dimension sample-colors 0))
+              downto 0
+              do (loop for i below (array-dimension sample-colors 1)
+                       do (format t "~2,' d" (aref sample-colors j i 2)))
+                 (format t "~%")))
       #++
       (fix-msdf5 image pimage sample-colors)
       #++(fix-msdf6 image pimage sample-colors)
-      (fix-msdf7 image pimage corner-cells)
+      #++(fix-msdf7 image pimage corner-cells)
       #++
       (progn ;; error correction
         (fix-msdf image pimage edge-cells)
@@ -1324,21 +1380,22 @@
             (fix-msdf3 image pimage m edge-cells)))
         #++(fix-msdf4 image pimage sample-colors))
 
-      (loop for j below (array-dimension image 0)
-            do (loop for i below (array-dimension image 01)
-                     for p = (aref pimage j i)
-                     do (loop for c below 3
-                              for s = (aref image j i c)
-                              when (>= (abs p) (- spread 0.0))
-                                do (setf (aref image j i c) p))))
+      (when *limit-msdf-range*
+        (loop for j below (array-dimension image 0)
+              do (loop for i below (array-dimension image 01)
+                       for p = (aref pimage j i)
+                       do (loop for c below 3
+                                for s = (aref image j i c)
+                                when (>= (abs p) (- spread 0.0))
+                                  do (setf (aref image j i c) p)))))
 
       (loop for j below (array-dimension image 0)
             do (loop for i below (array-dimension image 01)
                      for p = (aref pimage j i)
-                     do (loop for c below 4
+                     do (loop for c below (if mtsdf 4 3)
                               do (setf (aref image j i c)
                                        (/ (aref image j i c) spread)))
-                        #++(setf (aref image j i 3)
+                     #++(setf (aref image j i 3)
                               (/ p spread))))
       #++
       (loop for j below (array-dimension image 0)
@@ -1347,6 +1404,9 @@
                      do (loop for c below 4
                               do (setf (aref image j i c)
                                        (/ p spread)))))
+      #++
       (setf (aref image 0 0 0) 10.0)
+      #++
       (setf (aref image 0 0 1) 10.0)
-      (setf (aref image 0 0 3) 10.0))))
+      #++
+      (when mtsdf (setf (aref image 0 0 3) 10.0)))))
