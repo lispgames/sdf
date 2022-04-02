@@ -12,6 +12,8 @@
                (:file "geometry")
                (:file "shape")
                (:file "shapedesc")
+               (:file "edit-shape")
+               (:file "shape-ops")
                (:file "sdf-base")
                (:file "edge-list")
                (:file "msdf")
