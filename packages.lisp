@@ -1,5 +1,7 @@
 (defpackage #:sdf
   (:use :cl)
+  (:local-nicknames (#:b #:sdf/base)
+                    (#:st #:sdf/ttf))
   (:export #:make-atlas
            #:save-atlas
 
