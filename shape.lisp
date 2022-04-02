@@ -288,6 +288,26 @@
               (setf start t)
               (end-contour)))))))
 
+(defun scale-shape (in sx &optional (sy sx))
+  ;; scale should probably be a option to parse-shape?
+  (let ((start t))
+    (with-shape-builder (shape)
+      (map-contour-segments
+       in (lambda (c n e)
+            (declare (ignore c))
+            (when start
+              (setf start nil)
+              ;; contour should always start with a point
+              (start-contour (* (p-rx n) sx) (* (p-ry n) sy)))
+            (etypecase n
+              (point)
+              (segment (line-to (* (s-rx2 n) sx) (* (s-ry2 n) sy)))
+              (bezier2 (quadratic-to
+                        (* (b2-rxc n) sx) (* (b2-ryc n) sy)
+                        (* (b2-rx2 n) sx) (* (b2-ry2 n) sy))))
+            (when e
+              (setf start t)
+              (end-contour)))))))
 
 (defun clean-shape (shape &key (verbose *dump*))
   ;; return a copy of SHAPE with degenerate contours, curves,
