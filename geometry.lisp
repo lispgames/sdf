@@ -510,3 +510,88 @@
     (v2+ (v2+ (v2scale d2 (* at at))
               (v2scale d1 (* 2 at)))
           p0)))
+
+
+(declaim (inline %b2-find-t))
+(defun %b2-find-t (x1 xc x2 x)
+;;; calculate T value(s) for specified X for 1d quadratic bezier X1,XC,X2
+  ;; x = (1-t)²x1+2t(1-t)xc+t²x2
+  ;;   = (x1-2xc+x2)t²+(-2x1+2xc)t+x1
+  (let ((a (+ x1 (* -2 xc) x2)))
+    (if (zerop a)
+        ;; linear, solve from 2 points
+        (cond
+          ((/= x1 x2)
+           (/ (- x x1) (- x2 x1)))
+          (t (error "degenerate bezier?")))
+        ;; do rest of quadratic formula
+        (let* ((b (* 2 (- xc x1)))
+               (c (- x1 x))
+               (d (- (expt b 2) (* 4 a c))))
+          (cond
+            ((zerop d)
+             (/ (- b) (* 2 a)))
+            ((minusp d) nil)
+            (t
+             (let ((2a (* 2 a))
+                   (-b (- b))
+                   (r (sqrt d)))
+               (values (/ (- -b r) 2a)
+                       (/ (+ -b r) 2a)))))))))
+
+
+(defun intersect-segment-segment (a b)
+  (declare (optimize speed)
+           (type segment a b))
+  (let* ((x1 (s-dx1 a))
+         (y1 (s-dy1 a))
+         (x2 (s-dx2 a))
+         (y2 (s-dy2 a))
+         (x3 (s-dx1 b))
+         (y3 (s-dy1 b))
+         (x4 (s-dx2 b))
+         (y4 (s-dy2 b))
+         (x1-x2 (- x1 x2))
+         (x3-x4 (- x3 x4))
+         (y1-y2 (- y1 y2))
+         (y3-y4 (- y3 y4))
+         (d (- (* x1-x2 y3-y4)
+               (* y1-y2 x3-x4)))
+         (x1y2 (* x1 y2))
+         (y1x2 (* y1 x2))
+         (x1y2-y1x2 (- x1y2 y1x2))
+         (x3y4 (* x3 y4))
+         (y3x4 (* y3 x4))
+         (x3y4-y3x4 (- x3y4 y3x4)))
+    (declare (double-float x1 y1 x2 y2 x3 y3 x4 y4))
+    (unless (zerop d)
+      (let ((x (/ (- (* x1y2-y1x2 x3-x4)
+                     (* x1-x2 x3y4-y3x4))
+                  d))
+            (y (/ (- (* x1y2-y1x2 y3-y4)
+                     (* y1-y2 x3y4-y3x4))
+                  d)))
+        (v2 x y)))))
+
+(defun intersect-segment-bezier2 (a b)
+  (break "todo"))
+
+(defun intersect-bezier2-bezier2 (a b)
+  (break "todo"))
+
+(defun intersect (a b)
+  (flet ((segment (a b)
+           (etypecase b
+             (segment
+              (intersect-segment-segment a b))
+             (bezier2
+              (intersect-segment-bezier2 a b))))
+         (bezier2 (a b)
+           (etypecase b
+             (segment
+              (intersect-segment-bezier2 b a))
+             (bezier2
+              (intersect-bezier2-bezier2 a b)))))
+    (etypecase a
+      (segment (segment a b))
+      (bezier2 (bezier2 a b)))))
