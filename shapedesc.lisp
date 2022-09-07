@@ -1,58 +1,102 @@
 (in-package #:sdf/base)
-(defun serialize-shape (shape &key allow-ratios normalize edge-colors)
+
+(defun serialize-shape (shape &key allow-ratios normalize edge-colors normalize-order)
   (let ((ox nil)
         (oy nil))
+    ;; when normalize-order is true, start all contours at point with lowest
+    ;; Y then lowest X
+    (when normalize-order
+      (let ((es (shape-to-edit-shape shape))
+            (changed nil))
+        (setf (contours es)
+              (loop for c1 in (contours es)
+                    for c2 = (if (typep c1 'es-contour-vertex) c1 (eprev c1))
+                    for x1 = (p-rx (point c2))
+                    for y1 = (p-ry (point c2))
+                    do (unless (eql c2 c1)
+                         (setf changed t))
+                       (map-modifying-contour
+                        c1 (lambda (n)
+                             (when (typep n 'es-contour-vertex)
+                               (let* ((pn (point n))
+                                      (py (p-ry pn)))
+                                 (when (or (< py y1)
+                                           (and (= py y1)
+                                                (<  (p-rx pn) x1)))
+                                   (setf changed t
+                                         c2 n
+                                         x1 (p-rx pn)
+                                         y1 py))))
+                             n))
+                    collect c2))
+        (when changed
+          (setf shape (edit-shape-to-shape es)))))
     (with-output-to-string (s)
-      (flet ((p (p)
-               (let ((x (if (or (integerp (p-rx p)) allow-ratios)
-                            (p-rx p)
-                            (p-dx p)))
-                     (y (if (or (integerp (p-ry p)) allow-ratios)
-                            (p-ry p)
-                            (p-dy p))))
-                 (when normalize
-                   ;; when normalize is true, subtract first point
-                   ;; from all points, and turn 1.0, 1.0 into 1, 1 (or
-                   ;; if allow-ratios is true, rationalize all floats)
-                   (unless ox
-                     (setf ox x)
-                     (setf oy y))
-                   (setf x (- x ox)
-                         y (- y oy))
+      (labels ((pf (X)
+                 ;; sbcl is doing odd things with ~e, ~f prints too
+                 ;; many 0s for large/small #s, and ~g is confusing.
+                 ;; prin1 seems to work well enough though?
+                 (let ((*read-default-float-format* 'double-float))
+                   (prin1 x s))
+                 ;; (format nil "~e" 1.5d0)->"1.4999999999999997d+0"
+                 ;; (format nil "~f" 1d30)->"1000000000000000000000000000000.0"
+                 ;; (format nil "~g" 1.5d0)->"1.5    "
+                 ;;(let ((*read-default-float-format* 'double-float))
+                 ;;   (list (prin1-to-string 1.5d0)
+                 ;;         (prin1-to-string 1d30)) -> ("1.5d0" "1.0d30")
+                 #++
+                 (let ((fx (if (floatp x) "~,,,,,,'ee" "~s"))
+                       (fy (if (floatp y) "~,,,,,,'ee" "~s")))
+                   (format s "~@?, ~@?" fx x fy y)))
+               (p (p)
+                 (let ((x (if (or (integerp (p-rx p)) allow-ratios)
+                              (p-rx p)
+                              (p-dx p)))
+                       (y (if (or (integerp (p-ry p)) allow-ratios)
+                              (p-ry p)
+                              (p-dy p))))
+                   (when normalize
+                     ;; when normalize is true, subtract first point
+                     ;; from all points, and turn 1.0, 1.0 into 1, 1 (or
+                     ;; if allow-ratios is true, rationalize all floats)
+                     (unless ox
+                       (setf ox x)
+                       (setf oy y))
+                     (setf x (- x ox)
+                           y (- y oy)))
                    (if allow-ratios
                        (setf x (rationalize x)
                              y (rationalize y))
                        (let ((fx (floor x))
                              (fy (floor y)))
-                         (when (and (= x fx) (= y fy))
-                           (setf x fx
-                                 y fy)))))
-                 (if allow-ratios
-                     (format s "~s, ~s" x y)
-                     (format s "~,,,,,,'ee, ~,,,,,,'ee" x y))))
-             (c (n &optional semi)
-               (let ((e (gethash n edge-colors)))
-                 (when e
-                   (cond
-                     ((or (equalp e '(t nil t))
-                          (eql e #b101))
-                      (format s "m"))
-                     ((or (equalp e '(nil t t))
-                          (eql e #b011))
-                      (format s "c"))
-                     ((or (equalp e '(t t nil))
-                          (eql e #b110))
-                      (format s "y"))
-                     (t (format s "w")))
-                   (when semi
-                     (format s "; "))))))
+                         (when (= x fx)
+                           (setf x fx))
+                         (when (= y fy)
+                           (setf y fy))))
+                   (pf x) (format s ",") (pf y)))
+               (c (n &optional semi)
+                 (let ((e (gethash n edge-colors)))
+                   (when e
+                     (cond
+                       ((or (equalp e '(t nil t))
+                            (eql e #b101))
+                        (format s "m"))
+                       ((or (equalp e '(nil t t))
+                            (eql e #b011))
+                        (format s "c"))
+                       ((or (equalp e '(t t nil))
+                            (eql e #b110))
+                        (format s "y"))
+                       (t (format s "w")))
+                     (when semi
+                       (format s "; "))))))
         (let ((prev-contour nil))
           (map-contour-segments
            shape
            (lambda (c# node end)
              (unless (eql c# prev-contour)
                (setf prev-contour c#)
-               (format s "{ "))
+               (format s "~&{ "))
              (etypecase node
                (point
                 (p node)
@@ -69,7 +113,7 @@
                 (p (b2-c1 node))
                 (format s "); ")))
              (when end
-               (format s "# }~%")))))))))
+               (format s "# }")))))))))
 
 (defparameter *dump-parse* nil)
 #++ (setf *dump-parse* t)
@@ -172,28 +216,3 @@
                        (end-contour)))
                    t)))
         (loop while (contour))))))
-
-#++
-(loop with sf = "c:/tmp/leak-test-shapedesc.txt"
-      with *read-default-float-format* = 'double-float
-      for (f c i scale spread s o) in (alexandria:hash-table-keys
-                                       sdf-leak-test::*failures*)
-      for hash = (format nil "~(~{~2,'0X~}~)"
-                         (coerce
-                          (md5:md5sum-string
-                           (format nil "~s ~s ~s ~s" scale spread o s))
-                          'list))
-
-      do (alexandria:write-string-into-file (sdf/base::serialize-shape
-                                             (sdf/base::parse-shape s))
-                                            sf
-                                            :if-exists :supersede)
-         (uiop:run-program
-          #++(format nil "msdfgen -autoframe -pxrange ~a -scale ~f -translate ~f ~f -o c:/tmp/leak-test-~a.png -shapedesc ~a "
-                     spread scale (aref o 0) (aref o 1)
-                     hash
-                     sf)
-          (print
-           (format nil "msdfgen -autoframe -pxrange ~a  -o c:/tmp/leak-test-~a.png -testrender c:/tmp/leak-test-r-~a.png 256 256 -shapedesc ~a"
-                   spread hash hash sf))
-          :output t))

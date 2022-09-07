@@ -17,7 +17,7 @@
          (dims (array-dimensions (st::atlas-image atlas)))
          (spread (st::atlas-distance-range atlas))
          (base (- (st::font-ascender metrics) pad-down)))
-    (destructuring-bind (height width channels) dims
+    (destructuring-bind (height width &optional (channels 1)) dims
       (loop for glyph in (st::font-glyphs metrics)
             for char = (st::glyph-character glyph)
             for (x y x2 y2) = (st::glyph-bounding-box glyph)

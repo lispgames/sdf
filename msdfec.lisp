@@ -36,10 +36,8 @@
   ;; 'protect' samples around a corner of shape
   (let ((wx (array-dimension image 1))
         (wy (array-dimension image 0)))
-    (format t "protect corners~%")
     (flet ((cc (j i)
              (when (array-in-bounds-p protected j i)
-               (format t " protect ~s,~s~%" i j)
                (setf (aref protected j i) 1))))
       (loop for j below wy
             do (loop for i below wx
@@ -77,12 +75,13 @@
                         ;; tt (b - a) = -a
                         ;; tt = (- a) / (- b a)
                         ;;    = (/ a (- a b))
-                        (tt (/ a (- a b))))
-                   (and (< 0 tt 1)
+                        (tt (when (/= a b) (/ a (- a b)))))
+                   (and (and tt (< 0 tt 1))
                         (let* ((i (lerp-at tt))
                                (m (vmedian i)))
                           (= m (aref i c)))))))
-        (progn #+unless (and (plusp (aref protected j1 i1))
+        (declare (ignorable #'imedian #'vmedian #'median3))
+        (unless (and (plusp (aref protected j1 i1))
                      (plusp (aref protected j2 i2)))
           (let ((m1 (aref pimage j1 i1))
                 (m2 (aref pimage j2 i2)))
@@ -91,13 +90,11 @@
                         (sqrt (+ (expt (- i2 i1) 2)
                                  (expt (- j2 j1) 2)))))
               (loop for c below 3
-                       when (channel-has-edge c)
-                         do (when (/= m1 (aref image j1 i1 c))
-                              #++(format t "protect ~s,~s~%" i1 j1)
-                              (setf (aref protected j1 i1) 1))
-                            (when (/= m2 (aref image j2 i2 c))
-                              #++(format t "protect ~s,~s~%" i2 j2)
-                              (setf (aref protected j2 i2) 1)))
+                    when (channel-has-edge c)
+                      do (when (/= m1 (aref image j1 i1 c))
+                           (setf (aref protected j1 i1) 1))
+                         (when (/= m2 (aref image j2 i2 c))
+                           (setf (aref protected j2 i2) 1)))
               (let ((m (loop for c below 3 collect (channel-has-edge c))))
                 (when (some 'identity m)
                   (let* ((x (min i1 i2))
@@ -109,27 +106,15 @@
                          (cc (if (and (/= i1 i2) (/= j1 j2))
                                  :d
                                  (if (zerop dx) :v :h))))
-                    #++(format t "~a ~2,'0d, ~2,'0d = ~s, ~,5f ~,5f~%"
-                               cc x y (loop for i below 3 for e in m
-                                            when e sum (ash 1 i))
-                               (aref pimage y x)
-                               (aref pimage (+ y dy) (+ x dx))
-                               )
+                    (declare (ignorable dy))
                     (loop for c below 3 for e in m
                           do (when (and e (/= m1 (aref image j1 i1 c)))
-                               (format t "~a protect ~s+~s,~s+~s ~s ~s~%"
-                                       cc x (- i1 x) y (- j1 y) m d)
                                (setf (aref protected j1 i1) 1)
                                (loop-finish)))
                     (loop for c below 3 for e in m
                           do (when (and e (/= m2 (aref image j2 i2 c)))
-                               (format t "~a protect ~s+~s,~s+~s ~s ~s~%"
-                                       cc x (- i2 x) y (- j2 y) m d)
                                (setf (aref protected j2 i2) 1)
-                               (loop-finish))
-                          ))
-                  )
-                ))))))))
+                               (loop-finish)))))))))))))
 
 (defparameter *feb-edge-epsilon* 0.01)
 (defparameter *feb-distance-epsilon* 0.111)
@@ -155,9 +140,7 @@
                  (coerce x 'double-float)))
         (unless (plusp (aref errors j1 i1))
           (let ((m1 (imedian j1 i1))
-                (m2 (imedian j2 i2))
-                (ddd (and (<= sdf-scratch::*kx* i1 (1+ sdf-scratch::*kx*))
-                          (<= sdf-scratch::*ky* j1 (1+ sdf-scratch::*ky*)))))
+                (m2 (imedian j2 i2)))
             (labels (#++(vmedian (v)
                           (median3 (aref v 0)
                                    (aref v 1)
@@ -227,26 +210,6 @@
                                              (c-at2 at1 at2 1)
                                              (c-at2 at1 at2 2)))
                                   (check (m m1 m2 tt t1 t2)
-                                    (when ddd
-                                     (format t "  prot = ~s, ~s~%"
-                                             (aref protected j1 i1)
-                                             (aref protected j2 i2))
-                                     (format t "  m = ~s ~s ~s~%"
-                                             (min m1 m2) m (max m1 m2))
-                                     (format t "  t = ~s ~s ~s~%"
-                                             t1 tt t2)
-                                     (format t "  d1 = ~s - ~s = ~,5f, > ~,5f (~s)~%"
-                                             m m1 (abs (- m m1))
-                                             (* (sqrt 2)
-                                                (- tt t1)
-                                                (1+ *feb-distance-epsilon*))
-                                             (- tt t1))
-                                     (format t "  d2 = ~s - ~s = ~,5f, > ~,5f (~s)~%"
-                                             m m2 (abs (- m m2))
-                                             (* (sqrt 2)
-                                                (- t2 tt)
-                                                (1+ *feb-distance-epsilon*))
-                                             (- t2 tt)))
                                     (when (or (not (= (signum m)
                                                       (signum m1)
                                                       (signum m2)))
@@ -261,57 +224,26 @@
                                                    (* (sqrt 2)
                                                       (- t2 tt)
                                                       (1+ *feb-distance-epsilon*))))
-                                        (format t ">>d2 ~s,~s - ~s,~s: ~s, ~s, ~s~%"
-                                                i1 j1 i2 j2 m1 m m2)
                                         (return-from d-pair t))))
                                   (d-pair2 (tt)
                                     (when (< *feb-edge-epsilon*
                                              tt
                                              (- 1 *feb-edge-epsilon*))
-                                      (assert (< (abs (- (c-at2 tt tt a)
-                                                         (c-at2 tt tt b)))
-                                                 0.001))
-                                      #++(format t "tt = ~s~%" tt)
+                                      #++(assert (< (abs (- (c-at2 tt tt a)
+                                                            (c-at2 tt tt b)))
+                                                    0.001))
                                       (let ((m (median-at2 tt tt)))
-                                        (when ddd
-                                          (format t "DDD ~s,~s - ~s,~s @ ~s,~s = ~,5f: s= ~s,~s,~s~%"
-                                                  i1 j1 i2 j2 a b tt
-                                                  (signum m)
-                                                  (signum m1)
-                                                  (signum m2)))
                                         (check m m1 m2 tt 0 1)
                                         (when (and amt (< 0 amt 1) (/= amt tt))
                                           (let ((mat1 (median-at2 amt amt)))
-                                            (when ddd
-                                              (format t "  amt = ~s = ~s~%"
-                                                      amt mat1)
-                                              (format t "  @ ~,5f = ~,5f~%"
-                                                      amt (c-at2 amt amt a))
-                                              (loop for i upto 1 by 0.125
-                                                    do (format t "    ~,5f=~,5f~%"
-                                                               i (c-at2 i i a))))
                                             (if (< amt tt)
                                                 (check m mat1 m2 tt amt 1)
                                                 (check m m1 mat1 tt 0 amt))))
                                         (when (and bmt (< 0 bmt 1) (/= bmt tt))
                                           (let ((mbt1 (median-at2 bmt bmt)))
-                                            (when ddd
-                                              (format t "  bmt = ~s = ~s~%"
-                                                      bmt mbt1)
-                                              (format t "  @ ~,5f = ~,5f~%"
-                                                      bmt (c-at2 bmt bmt b))
-                                              (loop for i upto 1 by 0.125
-                                                    do (format t "    ~,5f=~,5f~%" i (c-at2 i i b)))
-                                              (let ((l (/ bmt 2))
-                                                    (r (/ (1+ bmt) 2)))
-                                                (format t "  ~,5f=~,5f, ~,5f=~,5f, ~,5f=~,5f~%"
-                                                        l (c-at2 l l b)
-                                                        bmt (c-at2 bmt bmt b)
-                                                        r (c-at2 r r b))))
                                             (if (< bmt tt)
                                                 (check m mbt1 m2 tt bmt 1)
-                                                (check m m1 mbt1 tt 0 bmt)))
-)))))
+                                                (check m m1 mbt1 tt 0 bmt))))))))
                            (cond
                              ((or (zerop qa) (minusp qd))
                               ;; no solutions, skip this pair
@@ -328,8 +260,8 @@
                                  (d-pair 1 2))
                          (setf (aref errors j1 i1) 1)))
                      (hv-pair (a b)
-                       ;; a1 + tt (- a2 a1) = b1 + tt ( - b2 b1)
-                       ;; tt (- a2 a1) - tt ( - b2 b1) = b1 - a1
+                       ;; a1 + tt (- a2 a1) = b1 + tt (- b2 b1)
+                       ;; tt (- a2 a1) - tt (- b2 b1) = b1 - a1
                        ;; tt (- a2 a1 b1 b2) = (- b1 a1)
                        ;; tt = (- b1 a1) / (- a2 a1 b1 b2)
                        (let* ((a1 (aref image j1 i1 a))
@@ -355,8 +287,6 @@
                                              (> (abs (- m m2))
                                                 (* (- 1 tt)
                                                    (1+ *feb-distance-epsilon*))))
-                                     (format t "h1 ~s,~s - ~s,~s: ~s, ~s, ~s~%"
-                                             i1 j1 i2 j2 m1 m m2)
                                      (return-from hv-pair t)))))))))
                      (mark-hv ()
                        (when (or (hv-pair 0 1)
@@ -367,7 +297,7 @@
                   (mark-diagonal)
                   (mark-hv)))))))))
 
-(defun fix-msdf7 (image pimage corner-cells)
+(defun fix-msdf (image pimage corner-cells)
   (let ((protected (make-array (array-dimensions pimage)
                                :element-type 'bit :initial-element 0))
         (errors (make-array (array-dimensions pimage)
@@ -377,11 +307,6 @@
     ;; protect samples contributing to corners/edges
     (protect-samples protected image pimage corner-cells)
 
-    (format t "protected=~%")
-    (loop for j below wy
-          do (loop for i below wx
-                   do (format t " ~s" (aref protected j i)))
-          (format t "~%"))
     ;; find errors
     (find-errors-base errors protected image pimage)
 
@@ -392,5 +317,5 @@
                      do (setf (aref image j i 0) (aref pimage j i))
                         (setf (aref image j i 1) (aref pimage j i))
                         (setf (aref image j i 2) (aref pimage j i))
-                        (setf (aref image j i 3)
+                        #++(setf (aref image j i 3)
                               (* -100 (aref image j i 3)))))))

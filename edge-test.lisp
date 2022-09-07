@@ -1,11 +1,6 @@
 #++(ql:quickload '(sdf/test))
 #++(asdf:test-system 'sdf)
-(defpackage #:sdf/edge-test
-  (:use :parachute :cl)
-  (:local-nicknames (:b :sdf/base)
-                    (:f :sdf/ttf)
-                    (:s :sdf)))
-(in-package sdf/edge-test)
+(in-package sdf/test)
 
 
 (defun ulp+ (f n)
@@ -67,11 +62,6 @@
             do (setf (aref s j) (if bits (ulp+ y bits) y)))
       s)))
 
-#++
-(make-samples 40/3 1/10 'single-float (b::make-raabb 0 6 0 9))
-#++
-(make-samples 40/3 1/10 `(single-float -1) (b::make-raabb 0 6 0 9))
-
 (defun shape-max-length (s)
   (let ((l 0)
         (m 0))
@@ -85,6 +75,7 @@
          (setf m (max l m))
          (setf l 0))))
     m))
+
 (defun rotate-shape (s n)
   (let ((new (make-instance 'b::shape)))
     (setf (slot-value new 'b::contours) (copy-seq (b::contours s)))
@@ -136,11 +127,6 @@
                                      (> (second b) (second a))))))))
       (assert (every #'edge-ok edges))))
   t)
-#++
-(let ((s (b::parse-shape "{ 0, 0; 10, 0; 10, 10;  5, 15;  0, 10; # }")))
-  (test-shape1 s (make-samples 1/3 1/9 'single-float
-                               (print (b::rbounding-box s)))))
-
 
 
 (defun %test-shape (shape ref skip)

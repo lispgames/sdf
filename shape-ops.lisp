@@ -7,9 +7,9 @@
    :contours (loop for c across (contours shape)
                    collect (make-edit-contour shape c))))
 
-(defun edit-shape-to-shape (edit-shape &key metadata)
+(defun %edit-shape-to-shape (contours &key metadata)
   (with-shape-builder (shape :metadata metadata)
-    (loop for c in (contours edit-shape)
+    (loop for c in contours
           unless (degenerate-edit-contour c)
             do (when (typep c 'es-contour-edge)
                  (setf c (eprev c)))
@@ -28,6 +28,9 @@
                           (es-contour-vertex))
                      until (eql (enext n) c))
                (end-contour))))
+
+(defun edit-shape-to-shape (edit-shape &key metadata)
+  (%edit-shape-to-shape (contours edit-shape) :metadata metadata))
 
 (defun transpose-shape (in)
   (let ((start t))
@@ -113,7 +116,7 @@
               (setf start t)
               (end-contour)))))))
 
-
+#++
 (defun clean-shape-old (shape &key (verbose *dump*))
   ;; return a copy of SHAPE with degenerate contours, curves,
   ;; segments, and points removed
@@ -285,7 +288,6 @@
 (defun clean-shape (shape &key (verbose *dump*))
   ;; return a copy of SHAPE with degenerate contours, curves,
   ;; segments, and points removed
-  #++(clean-shape-old shape)
   (let ((es (shape-to-edit-shape shape))
         (drop (make-hash-table)))
     ;; run in 2 passes, so we can detect things that were degenerate
@@ -295,6 +297,9 @@
                (point (eprev n)))
              (p2 (n)
                (point (enext n)))
+             (p= (a b)
+               (and (= (p-rx a) (p-rx b))
+                    (= (p-ry a) (p-ry b))))
              (empty-bez (n)
                ;; b2 has 0 area if start and end points are same point
                (and (typep n 'es-contour-bezier2)
@@ -341,24 +346,61 @@
                  (let ((x (when (= (p-rx (p1 n)) (p-rx (p2 n))) (p-rx (p2 n))))
                        (y (when (= (p-ry (p1 n)) (p-ry (p2 n))) (p-ry (p2 n)))))
                    (when (or x y)
-                     (equalp f (list x y)))))))
+                     (equalp f (list x y))))))
+             (backtrack (n)
+               (unless (typep n 'es-contour-vertex)
+                 ;; true if next node backtracks over this one
+                 (let* ((s (p1 n)) ;; point at start of this node
+                        (nn (enext (enext n))) ;; next node
+                        (e (p2 nn)) ;; point at end of next node
+                        (r (and (p= s e)
+                                (or (and (typep n 'es-contour-segment)
+                                         (typep nn 'es-contour-segment))
+                                    (and (typep n 'es-contour-bezier2)
+                                         (typep nn 'es-contour-bezier2)
+                                         (p= (control-point n)
+                                             (control-point nn)))))))
+                   (when (and verbose r)
+                     (format t "backtrack @ ~s~%" (enl n))
+                     (format t "  s = ~s~%" (nl s))
+                     (format t "  nn = ~s~%" (enl nn))
+                     (format t "  e = ~s~%" (nl e))
+                     (when (and (typep n 'es-contour-bezier2)
+                                (typep nn 'es-contour-bezier2))
+                       (format t "  cn = ~s~%" (nl (control-point n)))
+                       (format t "  cnn = ~s~%" (nl (control-point nn)))))
+                   r))))
       ;; flag degenerate nodes
       (setf (contours es)
             (loop for c in (contours es)
                   collect (map-modifying-contour
                            c
                            (lambda (n)
+                             (when verbose (format t "p1: ~s~%" (enl n)))
                              (etypecase n
                                (es-contour-vertex)
                                (es-contour-segment
-                                (when (empty-seg n)
-                                  #++(break "~s - ~s~%" (eprev n) (enext n))
-                                  (setf (gethash n drop) t)))
+                                (cond
+                                  ((empty-seg n)
+                                   (when verbose
+                                     (format t " flag ~s empty~%" (enl n)))
+                                   (setf (gethash n drop) t))))
                                (es-contour-bezier2
                                 (cond
+                                  ((backtrack n)
+                                   (when verbose
+                                     (format t " flag ~s backtrack~%" (enl n))
+                                     (format t " flag ~s backtrack2~%"
+                                             (enl (enext (enext n)))))
+                                   (setf (gethash n drop) t)
+                                   (setf (gethash (enext (enext n)) drop) t))
                                   ((empty-bez n)
+                                   (when verbose
+                                     (format t " flag ~s empty~%" (enl n)))
                                    (setf (gethash n drop) t))
                                   ((flat-bez n)
+                                   (when verbose
+                                     (format t " bez ~s flat~%" (enl n)))
                                    ;; replace it with a segment
                                    (change-class n 'es-contour-segment)
                                    (when (empty-seg n)
@@ -370,35 +412,103 @@
       ;; and merge flat segments
       (setf (contours es)
             (loop for c in (contours es)
+                  do (when verbose (format t "-contour-~%"))
+                  collect
+                  (map-modifying-contour
+                   c
+                   (a:named-lambda x (n)
+                     (let ((ret n)) ;; return node if we don't modify it
+                       (when verbose (format t "~&p2 ~s~%" (enl n)))
+                       (etypecase n
+                         (es-contour-vertex)
+                         (es-contour-segment
+                          (cond
+                            ((gethash n drop)
+                             (when verbose (format t " drop ~s~%" (enl n)))
+                             (setf ret (collapse-edge n)))
+                            ((empty-seg n)
+                             (when verbose (format t " empty ~s~%" (enl n)))
+                             (setf ret (collapse-edge n)))
+                            ((flat-seg n)
+                             (let ((v (and verbose
+                                           (flat-seg-cont
+                                            (flat-seg n)
+                                            (enext (enext n))))))
+                               (when verbose
+                                 (format t "flat ~s @ ~s~%"
+                                         (flat-seg n)
+                                         (enl n)))
+                               (loop with f = (flat-seg n)
+                                     for n1 = (enext n)
+                                     for n2 = (enext n1)
+                                     when (or (eql n1 n)
+                                              (eql n2 n))
+                                       ;; deleted contour, drop it
+                                       do (return-from x nil)
+                                     do (when verbose
+                                          (format t " @ ~s = es: ~s, drop:~s, fsc:~s, neq:~s~%"
+                                                  (enl n2)
+                                                  (empty-seg n2)
+                                                  (gethash n2 drop)
+                                                  (flat-seg-cont f n2)
+                                                  (not (eql n n2))))
+                                     while (or (empty-seg n2)
+                                               (gethash n2 drop)
+                                               (and (flat-seg-cont f n2)
+                                                    (not (eql n n2))))
+                                     do (when verbose
+                                          (format t "-- delete ~s~%" (enl n1))
+                                          (format t "-- delete ~s~%" (enl n2)))
+                                        (%delete-node n1)
+                                        (%delete-node n2))
+                               (when (empty-seg n)
+                                 (when verbose (format t "collapse ~s~%" (enl n)))
+                                 (setf ret (eprev (collapse-edge n)))
+                                 (when verbose
+                                   (format t "flat ~s < ~s > ~s~%"
+                                           (flat-seg ret)
+                                           (flat-seg-cont (flat-seg ret)
+                                                          (eprev (eprev ret)))
+                                           (flat-seg-cont (flat-seg ret)
+                                                          (enext (enext ret))))))))))
+                         (es-contour-bezier2
+                          (cond
+                            ((gethash n drop)
+                             (when verbose (format t " drop2 ~s~%" (enl n)))
+                             (setf ret (collapse-edge n))))))
+                       (when (and verbose (not (eql n ret)))
+                         (format t " ~s -> ~s~%" (enl n) (enl ret)))
+                       ret)))))
+      ;; remove backtracking nodes (in a separate pass so we can
+      ;; delete them in place, which avoids problems with accidentally
+      ;; deleting all of an odd-numbered run of backtracks, which
+      ;; would leave a gap)
+      (setf (contours es)
+            (loop for c in (contours es)
+                  do (when verbose
+                       (format t "remove backtracks in contour:~%")
+                       (map-modifying-contour
+                        c (lambda (n) (format t "  ~s~%" (enl n)) n)))
                   collect (map-modifying-contour
                            c
                            (lambda (n)
-                             (let ((ret n)) ;; return node if we don't modify it
-                               (etypecase n
-                                 (es-contour-vertex)
-                                 (es-contour-segment
-                                  (cond
-                                    ((gethash n drop)
-                                     (setf ret (collapse-edge n)))
-                                    ((empty-seg n)
-                                     (setf ret (collapse-edge n)))
-                                    ((flat-seg n)
-                                     (loop with f = (flat-seg n)
-                                           for n1 = (enext n)
-                                           for n2 = (enext n1)
-                                           while (and (flat-seg-cont f n2)
-                                                      (not (eql n n2)))
-                                           do (%delete-node n1)
-                                              (%delete-node n2))
-                                     (when (empty-seg n)
-                                       (setf ret (collapse-edge n))))))
-                                 (es-contour-bezier2
-                                  (cond
-                                    ((gethash n drop)
-                                     (setf ret (collapse-edge n))))
-                                  #++(unless (eql n ret)
-                                       (format t " ~s -> ~s~%" n ret))))
-                               ret)))))
+                             (when verbose
+                               (format t "bt? ~s~%" (enl n)))
+                             (loop while (and n (backtrack n))
+                                   do (when verbose
+                                        (format t "delete backtrack~%  ~s~%  ~s~%  ~s~%  ~s~%"
+                                                (enl n)
+                                                (enl (enext n))
+                                                (enl (enext (enext n)))
+                                                (enl (enext (enext (enext n))))))
+                                      (%delete-node (enext n))
+                                      (%delete-node (enext n))
+                                      (%delete-node (enext n))
+                                      (setf n (%delete-node n))
+                                      (when verbose
+                                        (format t "   => ~s~%" (enl n))))
+                             n))))
+
       ;; make sure we didn't leave any degenerate nodes
       (setf (contours es)
             (loop for c in (contours es)
@@ -424,7 +534,7 @@
       (setf (contours es)
             (remove-if 'degenerate-edit-contour (contours es))))
 
-    (edit-shape-to-shape es)))
+    (edit-shape-to-shape es :metadata (metadata shape))))
 
 (defun %sort-edges (shape)
   (let ((edges nil))
@@ -451,32 +561,9 @@
                         c n))))))
     (sort edges '< :key 'car)))
 
-#++
-(defun simplify-shape (shape)
-  (let ((edges (%sort-edges shape))
-        (live nil)
-        (hits nil))
-    (loop for e in edges
-          for (y1 y2 x1 x2 c n) = e
-          do (setf live
-                   (cons e
-                         (loop for e2 in live
-                               for (y3 y4 x3 x4 c2 n2) = e2
-                               when (>= y4 y1)
-                                 collect e2
-                                 and (when (or (<= x1 x3 x2)
-                                               (<= x1 x4 x2)))))))))
-
 (defun simplify-shape (shape &key samples)
   (declare (ignorable samples))
-  #++(break "shape ~s" shape)
-
-  #++(let ((edges (%make-edge-list shape samples)))
-       (declare (ignorable edges))
-       (break "edges ~s~%" edges)
-       shape)
   shape)
-
 
 (defun point-normal (shape point)
   (labels ((seg-tangent (s)

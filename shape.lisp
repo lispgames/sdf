@@ -225,31 +225,9 @@
                  do (funcall function c# n end)
                  until end)))
 
-#++
-(defmethod update-instance-for-different-class :after ((old shape)
-                                                       (new indexed-shape)
-                                                       &rest initargs
-                                                       &key &allow-other-keys)
-  (declare (ignore initargs))
-                                        ;(check-shape old)
-  (map-contour-segments
-   new (lambda (c# s end)
-         (declare (ignore end))
-         (etypecase s
-           (v:bezier2
-            (vector-push-extend s (curves new)))
-           (v:line
-            (vector-push-extend s (lines new)))
-           (v:point
-            (vector-push-extend s (points new))))
-         (setf (gethash s (contour-index new)) c#))))
-
-
 (defclass sdf-shape (indexed-shape)
   ;; spatial index for contour
   ((qtree :reader qtree :initarg :qtree)))
-
-
 
 (defmethod update-instance-for-different-class :after ((old shape)
                                                        (new sdf-shape)
@@ -258,8 +236,6 @@
   (declare (ignore initargs))
   ;; todo: build qtree
   )
-
-
 
 (defun next (shape element)
   (gethash element (%next shape)))
@@ -286,7 +262,6 @@
   ;; go on here or not, since it might be on edge between 2 colors...
   ;; might keep it if it isn't though, to simplify that case?)
   ((coloring :reader coloring :initform (make-hash-table))))
-
 
 (defmethod check-shape ((shape shape))
   (map-contour-segments

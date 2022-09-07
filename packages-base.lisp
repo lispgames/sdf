@@ -1,7 +1,7 @@
 (defpackage #:sdf/base
   (:use :cl)
   (:local-nicknames (#:a #:alexandria-2)
-                    (#:q #:damn-fast-updatable-priority-queue))
+                    #++(#:q #:damn-fast-updatable-priority-queue))
   (:export #:render-sdf
            #:v2
            #:vx
@@ -39,3 +39,16 @@
            #:s-y1
            #:s-x2
            #:s-y2))
+
+(defpackage #:sdf/quadratic-intersect/int
+  (:use #:cl)
+  (:local-nicknames (#:a #:alexandria-2)
+                    (#:b #:sdf/base))
+  (:import-from #:sdf/base #:vx #:vy))
+
+(defpackage #:sdf/quadratic-intersect
+  (:use #:cl)
+  (:local-nicknames (#:a #:alexandria-2)
+                    (#:b #:sdf/base)
+                    (#:d #:sdf/quadratic-intersect/int))
+  (:import-from #:sdf/base #:vx #:vy))

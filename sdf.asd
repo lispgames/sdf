@@ -4,18 +4,25 @@
   :author "Bart Botta <00003b at gmail.com>"
   :license "MIT"
   :depends-on (cl-vectors cl-paths cl-aa cl-aa-misc parse-number
-                          float-features
-                          damn-fast-updatable-priority-queue)
+                          float-features)
   :serial t
   :components ((:file "packages-base")
                (:file "v2")
                (:file "geometry")
+               (:file "quadratic-intersect-common")
+               (:file "quadratic-intersect-geometry")
+               (:file "quadratic-intersect")
                (:file "shape")
-               (:file "shapedesc")
                (:file "edit-shape")
+               (:file "shapedesc")
                (:file "shape-ops")
                (:file "sdf-base")
                (:file "edge-list")
+               (:file "rb")
+               (:file "df-queue")
+               (:file "ff-queue")
+               (:file "clean-shape")
+               (:file "msdfec")
                (:file "msdf")
                (:file "sdf")))
 
@@ -49,13 +56,18 @@
   :serial t
   :components ((:file "bmfont")))
 
-
-
 (defsystem sdf/test
   :depends-on (sdf parachute md5 float-features)
   :serial t
   :perform
   (asdf:test-op (op c) (uiop:symbol-call :parachute :test :sdf/test))
-  :components ((:file "tests")
+  :components ((:file "test-package")
+               ;; automated tests, (parachute:run :sdf/test)
+               (:file "tests")
+               (:file "edge-test")
+               (:file "clean-regression")
+               (:file "intersect-regression")
+
+               ;; utilities/manual tests etc
                (:file "leak-check")
-               (:file "edge-test")))
+               (:file "clean-test")))

@@ -23,7 +23,24 @@
 
 (defclass es-contour-bezier2 (es-contour-edge)
   ;; curve adds a control point between the adjacent points
-  ((control-point :initarg :control-point :reader control-point)))
+  ((control-point :initarg :control-point :reader control-point :initform nil)))
+
+(defun enl (n)
+  (flet ((p? (p)
+           (cond ((eql p n) :<@>)
+                 ((eql p :removed) :removed)
+                 ((typep p 'es-contour-vertex) (nl (point p)))
+                 (t :???))))
+    (etypecase n
+      (null nil)
+      (es-contour-vertex
+       (list :v (nl (point n))))
+      (es-contour-bezier2
+       (list :b (p? (eprev n))
+             (when (control-point n) (nl (control-point n)))
+             (p? (enext n))))
+      (es-contour-segment
+       (list :s (p? (eprev n)) (p? (enext n)))))))
 
 (defmethod initialize-instance :after ((n es-contour-node) &key)
   ;; if only 1 of next is bound, set other to same thing. if neither
@@ -45,6 +62,15 @@
              (enext node) new
              (enext (eprev new)) (enext node)
              (eprev (enext node)) (eprev new)))
+    r))
+
+(defun add-before (node new)
+  (let ((r (enext new)))
+    (when node
+      (psetf (enext new) node
+             (eprev node) new
+             (eprev (enext new)) (eprev node)
+             (enext (eprev node)) (enext new)))
     r))
 
 (defun add-after-* (node &rest new)
@@ -89,14 +115,6 @@
    (eql c (enext c))
    ;; same start and end points
    (eql (enext c) (eprev c))))
-
-
-
-#++
-(setf (sdf-scratch::shape sdf-scratch::*r*)
-      (edit-shape-to-shape
-       (shape-to-edit-shape (sdf-scratch::shape sdf-scratch::*r*))))
-
 
 (defun %delete-node (ecn)
   ;; remove ecn from doubly linked list, and return previous node
@@ -168,5 +186,42 @@
                    (setf n (enext n))
                    (setf n n2))
             while n
-            until (gethash n visited)
+            until (and (gethash n visited)
+                       ;; stop when current and next node have been
+                       ;; visited, so FUN can backtrack by 1 if needed
+                       (gethash (enext n) visited))
             finally (return n)))))
+
+(defun %print-contour (start &key max)
+  (let ((c 0)
+        (m2 (when max (ceiling max 2))))
+    (sdf/base::map-modifying-contour
+     start (lambda (n)
+             (incf c)
+             (when (or (not max) (< c m2))
+               (format t "  ~s~%" (sdf/base::enl n)))
+             n))
+    (when (and m2 (>= c m2))
+      (let ((c2 (- c m2))
+            (s2 start))
+        (when (> c2 m2)
+          (format t " ... skipped ~s ...~%" (- c2 m2)))
+        (setf c2 (min m2 c2))
+        (loop repeat c2 do (setf s2 (eprev s2)))
+        (loop repeat c2
+              do (format t "  ~s~%" (sdf/base::enl s2))
+                 (setf s2 (enext s2))
+              until (eql s2 start))))))
+
+(defun %print-contours (contours)
+  (loop for c in contours
+        for i from 0
+        do (format t " ~s = ~%" i)
+           (%print-contour c)))
+
+(defun %reverse-contour (contour)
+  (loop for s = contour then n
+        for n = (enext contour) then (enext n)
+        do (rotatef (eprev s) (enext s))
+        until (eql n contour))
+  contour)

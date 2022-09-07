@@ -1,5 +1,5 @@
 #++
-(ql:quickload '(sdf-test no-sleep))
+(ql:quickload '(sdf/test no-sleep))
 (defpackage #:sdf-leak-test
   (:use :cl)
   (:local-nicknames (:a :alexandria-2)
@@ -203,9 +203,9 @@
                              (incf c3)
                              (setf (gethash (list
                                              font collection index scale spread
+                                             (b::origin sdf)
                                              (b::serialize-shape shape
-                                                                 :allow-ratios t)
-                                             (b::origin sdf))
+                                                                 :allow-ratios t))
                                             *failures*)
                                    :leaks))
                             (t

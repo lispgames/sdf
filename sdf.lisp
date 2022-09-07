@@ -2,10 +2,6 @@
 
 ;; render sdf/psdf from a SHAPE
 
-(defparameter *dump-mask* nil)
-#++ (setf *dump-mask* t)
-
-
 (defun calculate-size (shape spread scale)
   (if (zerop (length (contours shape)))
       ;; not sure what this should do for empty shapes yet?
@@ -29,7 +25,7 @@
     ;; return nil for 1 channel, since we don't have a 3rd dimension for that?
     ((:sdf :psdf) 1)
     ((:msdf) 3)
-    ((:smsdf :mtsdf) 4)))
+    ((:smsdf :mtsdf :msdf+a) 4)))
 
 
 (defun distance-to-shape (shape x y)
@@ -244,7 +240,9 @@
                                      :initial-element 0))
            (samples/y (make-array wy :element-type 'real
                                      :initial-element 0))
-           (clean-shape (clean-shape shape)))
+           (clean-shape shape
+                        #++ (sdf/cleaner::fix-shape shape)
+                        #++(clean-shape shape)))
       (when origin
         (setf ox (aref origin 0))
         (setf oy (aref origin 1)))
@@ -271,17 +269,18 @@
                          j (+ (* (- oy 1/2) scale)
                               (* j (- scale)))
                          y)))
-
       (let ((sdf (make-instance 'sdf :spread spread :sdf-type type
                                      :shape shape
                                      :cleaned-shape clean-shape
                                      :pixel-scale scale :origin (rv2 ox oy)
                                      :image image
-                                     :signs (make-mask
-                                             wx wy
-                                             samples/x samples/y
-                                             (%make-edge-list clean-shape
-                                                              samples/y))
+                                     :signs (with-simple-restart
+                                                (continue "skip")
+                                              (make-mask
+                                               wx wy
+                                               samples/x samples/y
+                                               (%make-edge-list clean-shape
+                                                                samples/y)))
                                      :samples/x samples/x
                                      :samples/y samples/y
                                      :min-sharp-edge-length
@@ -292,5 +291,8 @@
                                                 (aref samples/x 0)))
                                         (or min-sharp-edge-length 0)))))
         (unless (zerop (length (contours (cleaned-shape sdf))))
-          (render-sdf sdf :render render))
+          (when (signs sdf)
+            (with-simple-restart
+                (continue "skip generating this glyph")
+              (render-sdf sdf :render render))))
         sdf))))

@@ -1,5 +1,8 @@
 (in-package #:sdf/base)
 
+(defparameter *dump-mask* nil)
+#++ (setf *dump-mask* t)
+
 (defmacro with-tranposed-readers ((flag &rest pairs) &body body)
   (a:with-gensyms (x)
     `(flet (,@ (loop for (a b) in pairs
@@ -326,8 +329,12 @@
                          (st
                           ;; we have an extreme point, so need to finish
                           ;; segment in the middle
-                          (loop with d1 = (dir y1 sy)
-                                with d2 = (dir sy y2)
+                          (loop with d1 = (if (= y1 sy)
+                                              (dir sy y2)
+                                              (dir y1 sy))
+                                with d2 = (if (= sy y2)
+                                              d1
+                                              (dir sy y2))
                                 for pt = -1 then tt
                                 for ((tt flag j) . more) on s
                                 do (when (or (< pt st tt)
