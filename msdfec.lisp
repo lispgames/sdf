@@ -18,6 +18,7 @@
 (defmacro do-edge-pairs4 ((wx wy i1 j1 i2 j2) &body body)
   (a:with-gensyms (run)
     `(flet ((,run (,i1 ,j1 ,i2 ,j2)
+              (declare (type fixnum ,i1 ,j1 ,i2 ,j2))
               (when (and (< -1 ,i2 ,wx)
                          (< -1 ,j2 ,wy))
                 ,@body)))
@@ -33,11 +34,19 @@
                          (,run ,i1 ,j1 (- ,i1 1) (+ ,j1 1)))))))
 
 (defun protect-samples (protected image pimage corner-cells)
+  (declare (type (or (simple-array single-float (* * 3))
+                     (simple-array single-float (* * 4)))
+                 image)
+           (type (simple-array single-float (* *)) pimage)
+           (type (simple-array bit (* *)) protected)
+           (type (simple-array t (* *)) corner-cells)
+           (optimize speed))
   ;; 'protect' samples around a corner of shape
   (let ((wx (array-dimension image 1))
         (wy (array-dimension image 0)))
+    (declare (type (unsigned-byte 32) wx wy))
     (flet ((cc (j i)
-             (when (array-in-bounds-p protected j i)
+             (when (and (< i wx) (< j wy))
                (setf (aref protected j i) 1))))
       (loop for j below wy
             do (loop for i below wx
@@ -58,16 +67,19 @@
                  (median3 (aref image j i 0)
                           (aref image j i 1)
                           (aref image j i 2)))
+               (v3 (a b c)
+                 (make-array 3 :element-type 'single-float
+                               :initial-contents (list a b c)))
                (lerp-at (at)
-                 (vector (a:lerp at
-                                 (aref image j1 i1 0)
-                                 (aref image j2 i2 0))
-                         (a:lerp at
-                                 (aref image j1 i1 1)
-                                 (aref image j2 i2 1))
-                         (a:lerp at
-                                 (aref image j1 i1 2)
-                                 (aref image j2 i2 2))))
+                 (v3 (a:lerp at
+                             (aref image j1 i1 0)
+                             (aref image j2 i2 0))
+                     (a:lerp at
+                             (aref image j1 i1 1)
+                             (aref image j2 i2 1))
+                     (a:lerp at
+                             (aref image j1 i1 2)
+                             (aref image j2 i2 2))))
                (channel-has-edge (c)
                  (let* ((a (aref image j1 i1 c))
                         (b (aref image j2 i2 c))
@@ -80,47 +92,50 @@
                         (let* ((i (lerp-at tt))
                                (m (vmedian i)))
                           (= m (aref i c)))))))
-        (declare (ignorable #'imedian #'vmedian #'median3))
+        (declare (ignorable #'imedian #'vmedian #'median3)
+                 (inline v3 vmedian lerp-at))
         (unless (and (plusp (aref protected j1 i1))
                      (plusp (aref protected j2 i2)))
           (let ((m1 (aref pimage j1 i1))
                 (m2 (aref pimage j2 i2)))
             (when (< (+ (abs m1) (abs m2))
                      (* 1.001
-                        (sqrt (+ (expt (- i2 i1) 2)
-                                 (expt (- j2 j1) 2)))))
+                        (sqrt (+ (expt (float (- i2 i1)) 2)
+                                 (expt (float (- j2 j1)) 2)))))
               (loop for c below 3
                     when (channel-has-edge c)
                       do (when (/= m1 (aref image j1 i1 c))
                            (setf (aref protected j1 i1) 1))
                          (when (/= m2 (aref image j2 i2 c))
                            (setf (aref protected j2 i2) 1)))
-              (let ((m (loop for c below 3 collect (channel-has-edge c))))
-                (when (some 'identity m)
-                  (let* ((x (min i1 i2))
-                         (y (min j1 j2))
-                         (dx (- (max i1 i2) x))
-                         (dy (- (max j1 j2) y))
-                         (d (loop for i below 3 for e in m
-                                  when e sum (ash 1 i)))
-                         (cc (if (and (/= i1 i2) (/= j1 j2))
-                                 :d
-                                 (if (zerop dx) :v :h))))
-                    (declare (ignorable dy))
-                    (loop for c below 3 for e in m
-                          do (when (and e (/= m1 (aref image j1 i1 c)))
-                               (setf (aref protected j1 i1) 1)
-                               (loop-finish)))
-                    (loop for c below 3 for e in m
-                          do (when (and e (/= m2 (aref image j2 i2 c)))
-                               (setf (aref protected j2 i2) 1)
-                               (loop-finish)))))))))))))
+              (let ((m (loop for c below 3
+                             when (channel-has-edge c)
+                               collect c)))
+                (when m
+                  (loop for c in m
+                        do (when (/= m1 (aref image j1 i1 c))
+                             (setf (aref protected j1 i1) 1)
+                             (loop-finish)))
+                  (loop for c in m
+                        do (when (/= m2 (aref image j2 i2 c))
+                             (setf (aref protected j2 i2) 1)
+                             (loop-finish))))))))))))
 
 (defparameter *feb-edge-epsilon* 0.01)
 (defparameter *feb-distance-epsilon* 0.111)
 (defun find-errors-base (errors protected image pimage)
+  (declare (type (or (simple-array single-float (* * 3))
+                     (simple-array single-float (* * 4)))
+                 image)
+           (type (simple-array single-float (* *)) pimage)
+           (type (simple-array bit (* *)) protected errors)
+           (optimize speed))
   (let ((wx (array-dimension image 1))
-        (wy (array-dimension image 0)))
+        (wy (array-dimension image 0))
+        (feb-edge-epsilon *feb-edge-epsilon*)
+        (feb-distance-epsilon *feb-distance-epsilon*))
+    (declare (type (unsigned-byte 32) wx wy)
+             (type single-float feb-edge-epsilon feb-distance-epsilon))
     (do-edge-pairs4 (wx wy i1 j1 i2 j2)
       ;; look at whichever sample of pair is further from shape,
       ;; unless it is protected and other is not
@@ -137,15 +152,15 @@
                           (aref image j i 1)
                           (aref image j i 2)))
                (d (x)
-                 (coerce x 'double-float)))
+                 ;; this used to coerce some things to doubles, but
+                 ;; can't tell if it actually matters so switched to
+                 ;; single for optimization. If quality problems show
+                 ;; up with msdf, might try switching back.
+                 x #++(coerce x 'double-float)))
         (unless (plusp (aref errors j1 i1))
           (let ((m1 (imedian j1 i1))
                 (m2 (imedian j2 i2)))
-            (labels (#++(vmedian (v)
-                          (median3 (aref v 0)
-                                   (aref v 1)
-                                   (aref v 2)))
-                     (%lerp-at (at)
+            (labels ((%lerp-at (at)
                        (values (a:lerp at
                                        (aref image j1 i1 0)
                                        (aref image j2 i2 0))
@@ -155,11 +170,8 @@
                                (a:lerp at
                                        (aref image j1 i1 2)
                                        (aref image j2 i2 2))))
-                     #++(lerp-at (at)
-                          (multiple-value-call #'vector (%lerp-at at)))
                      (median-at (at)
                        (multiple-value-call #'median3 (%lerp-at at)))
-
                      (d-pair (a b)
                        ;; 1 2
                        ;; 3 4
@@ -195,8 +207,10 @@
                               ;; extrema of channels
                               ;; 2 ac2 tt + ac1 = 0
                               ;; tt = (/ (- ac1) (* 2 ac2)
-                              (amt (unless (zerop ac2) (/ (- ac1) (* 2 ac2))))
-                              (bmt (unless (zerop bc2) (/ (- bc1) (* 2 bc2)))))
+                              (amt (unless (zerop ac2)
+                                     (float (/ (- ac1) (* 2 ac2)) 1.0)))
+                              (bmt (unless (zerop bc2)
+                                     (float (/ (- bc1) (* 2 bc2)) 1.0))))
                          (labels ((c-at2 (at1 at2 c)
                                     (a:lerp at2
                                             (a:lerp at1
@@ -219,31 +233,32 @@
                                       (when (or (> (abs (- m m1))
                                                    (* (sqrt 2)
                                                       (- tt t1)
-                                                      (1+ *feb-distance-epsilon*)))
+                                                      (1+ feb-distance-epsilon)))
                                                 (> (abs (- m m2))
                                                    (* (sqrt 2)
                                                       (- t2 tt)
-                                                      (1+ *feb-distance-epsilon*))))
+                                                      (1+ feb-distance-epsilon))))
                                         (return-from d-pair t))))
                                   (d-pair2 (tt)
-                                    (when (< *feb-edge-epsilon*
+                                    (when (< feb-edge-epsilon
                                              tt
-                                             (- 1 *feb-edge-epsilon*))
+                                             (- 1 feb-edge-epsilon))
                                       #++(assert (< (abs (- (c-at2 tt tt a)
                                                             (c-at2 tt tt b)))
                                                     0.001))
                                       (let ((m (median-at2 tt tt)))
-                                        (check m m1 m2 tt 0 1)
+                                        (check m m1 m2 tt 0.0 1.0)
                                         (when (and amt (< 0 amt 1) (/= amt tt))
                                           (let ((mat1 (median-at2 amt amt)))
                                             (if (< amt tt)
-                                                (check m mat1 m2 tt amt 1)
-                                                (check m m1 mat1 tt 0 amt))))
+                                                (check m mat1 m2 tt amt 1.0)
+                                                (check m m1 mat1 tt 0.0 amt))))
                                         (when (and bmt (< 0 bmt 1) (/= bmt tt))
                                           (let ((mbt1 (median-at2 bmt bmt)))
                                             (if (< bmt tt)
-                                                (check m mbt1 m2 tt bmt 1)
-                                                (check m m1 mbt1 tt 0 bmt))))))))
+                                                (check m mbt1 m2 tt bmt 1.0)
+                                                (check m m1 mbt1 tt 0.0 bmt))))))))
+                           (declare (dynamic-extent #'check #'d-pair2))
                            (cond
                              ((or (zerop qa) (minusp qd))
                               ;; no solutions, skip this pair
@@ -271,9 +286,9 @@
                               (d (- a2 a1 (- b2 b1))))
                          (unless (zerop d)
                            (let ((tt (/ (- b1 a1) d)))
-                             (when (< *feb-edge-epsilon*
+                             (when (< feb-edge-epsilon
                                       tt
-                                      (- 1 *feb-edge-epsilon*))
+                                      (- 1 feb-edge-epsilon))
                                (let ((m (median-at tt)))
                                  (when (or (not (= (signum m)
                                                    (signum m1)
@@ -283,10 +298,10 @@
                                                  (<= (min m1 m2) m (max m1 m2)))))
                                    (when (or (> (abs (- m m1))
                                                 (* tt
-                                                   (1+ *feb-distance-epsilon*)))
+                                                   (1+ feb-distance-epsilon)))
                                              (> (abs (- m m2))
                                                 (* (- 1 tt)
-                                                   (1+ *feb-distance-epsilon*))))
+                                                   (1+ feb-distance-epsilon))))
                                      (return-from hv-pair t)))))))))
                      (mark-hv ()
                        (when (or (hv-pair 0 1)
@@ -298,6 +313,11 @@
                   (mark-hv)))))))))
 
 (defun fix-msdf (image pimage corner-cells)
+  (declare (type (or (simple-array single-float (* * 3))
+                     (simple-array single-float (* * 4)))
+                 image)
+           (type (simple-array single-float (* *)) pimage)
+           (optimize speed))
   (let ((protected (make-array (array-dimensions pimage)
                                :element-type 'bit :initial-element 0))
         (errors (make-array (array-dimensions pimage)
@@ -316,6 +336,4 @@
                    when (plusp (aref errors j i))
                      do (setf (aref image j i 0) (aref pimage j i))
                         (setf (aref image j i 1) (aref pimage j i))
-                        (setf (aref image j i 2) (aref pimage j i))
-                        #++(setf (aref image j i 3)
-                              (* -100 (aref image j i 3)))))))
+                        (setf (aref image j i 2) (aref pimage j i))))))
