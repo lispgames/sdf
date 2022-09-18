@@ -1461,7 +1461,6 @@
                       r1)))
                (bezier2
                 (intersect-bezier2-bezier2/range a b at1 at2 bt1 bt2)))))
-      (declare (notinline segment bezier2))
       (etypecase a
         (segment (segment a b))
         (bezier2 (bezier2 a b))))))

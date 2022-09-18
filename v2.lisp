@@ -1,7 +1,7 @@
 (in-package #:sdf/base)
 
 (declaim (inline v2 vx vy (setf vx) (setf vy)
-                 v2- v2+ v2h* v2. v2x v2dist v2scale v2mag v2n v2rx))
+                 v2- v2+ v2h* v2. v2x v2dist v2scale v2mag v2n v2rx v2lerp))
 (defun vx (v) (aref v 0))
 (defun vy (v) (aref v 1))
 
