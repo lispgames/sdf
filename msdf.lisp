@@ -160,6 +160,7 @@
     edges
     facing))
 
+#++
 (defun distance-to-shape/rgb (shape x y colors)
   ;; return as 3 values, nearest nodes of SHAPE for each color, and
   ;; actual distance as 4th value
@@ -205,6 +206,77 @@
                  (mm node (dist node)))
                (incf i))))
     (values re ge be a ae)))
+
+
+(defun %distance-to-shape/rgb (x y points segments curves)
+  (declare (optimize speed))
+  ;; return as 3 values, nearest nodes of SHAPE for each color, and
+  ;; actual distance as 4th value
+  (let ((r most-positive-single-float)
+        (re nil)
+        (g most-positive-single-float)
+        (ge nil)
+        (b most-positive-single-float)
+        (be nil)
+        (a most-positive-single-float)
+        (ae nil)
+        (amax most-positive-single-float)
+        (xy (v2 x y)))
+    (declare (type single-float r g b a amax))
+    (labels ((mm (node dist rm gm bm)
+               (declare (type (or null single-float) dist))
+               (when dist
+                 (let ((adist (abs dist))
+                       (c nil))
+                   (when (< adist (abs a))
+                     (setf a dist
+                           c t
+                           ae node))
+                   (when (and rm (< adist r))
+                     (setf r adist
+                           c t
+                           re node))
+                   (when (and gm (< adist g))
+                     (setf g adist
+                           c t
+                           ge node))
+                   (when (and bm (< adist b))
+                     (setf b adist
+                           c t
+                           be node))
+                   (when c
+                     (setf amax (max (abs a) r g b)))))))
+      (loop for p in points
+            do (mm (pb-n p) (dist/v2-point/sf xy p)
+                   (pb-rm p) (pb-gm p) (pb-bm p)))
+      (loop for s in segments
+            when (<= (v2dist xy (sb-bc s))
+                     (+ amax (sb-br s)))
+              do (mm (sb-n s) (dist/v2-segment/sf xy s)
+                     (sb-rm s) (sb-gm s) (sb-bm s)))
+      (loop for c in curves
+            when (<= (v2dist xy (b2b-bc c))
+                     (+ amax (b2b-br c)))
+              do (mm (b2b-n c) (dist/v2-bezier2/sf xy c)
+                     (b2b-rm c) (b2b-gm c) (b2b-bm c))))
+    (values re ge be a ae)))
+
+(defun %shape-to-parts-bounds/rgb (shape colors)
+  (let ((points nil)
+        (segments nil)
+        (curves nil))
+    (map-contour-segments
+     shape (lambda (c# node endp)
+             (declare (ignorable c# endp))
+             (destructuring-bind (rm gm bm) (gethash node colors)
+               (etypecase node
+                 (point
+                  (push (pointb node rm gm bm) points))
+                 (segment
+                  (push (segmentb node rm gm bm) segments))
+                 (bezier2
+                  (push (bezier2b node rm gm bm) curves))))))
+    (values points segments curves)))
 
 (defvar *last-edge-colors* nil)
 (defvar *last-edge-groups* nil)
@@ -340,61 +412,64 @@
             :output t
             :error-output t)))
         (terpri))
-      (loop with wy = (array-dimension image 0)
-            for j below wy
-            for rs = 0
-            for gs = 0
-            for bs = 0
-            for y across samples/y
-            for edge-row across edges/y
-            do (loop for i below (array-dimension image 1)
-                     for x across samples/x
-                     do (multiple-value-bind (re ge be a ae)
-                            (distance-to-shape/rgb shape x y colors)
-                          (if (and re ge be)
-                              (let ((r (pseudo-distance x y re 0))
-                                    (g (pseudo-distance x y ge 1))
-                                    (b (pseudo-distance x y be 2)))
-                                (when (typep re 'point)
-                                  (setf re (assign-corners j i re 0)))
-                                (when (typep ge 'point)
-                                  (setf ge (assign-corners j i ge 1)))
-                                (when (typep be 'point)
-                                  (setf be (assign-corners j i be 2)))
+      (multiple-value-bind (points segments curves) (%shape-to-parts-bounds/rgb shape colors)
+        (loop with wy = (array-dimension image 0)
+              for j below wy
+              for rs = 0
+              for gs = 0
+              for bs = 0
+              for y across samples/y
+              for edge-row across edges/y
+              do (loop for i below (array-dimension image 1)
+                       for x across samples/x
+                       do (multiple-value-bind (re ge be a ae)
+                              (%distance-to-shape/rgb
+                               x y points segments curves)
+                              #++(distance-to-shape/rgb shape x y colors)
+                            (if (and re ge be)
+                                (let ((r (pseudo-distance x y re 0))
+                                      (g (pseudo-distance x y ge 1))
+                                      (b (pseudo-distance x y be 2)))
+                                  (when (typep re 'point)
+                                    (setf re (assign-corners j i re 0)))
+                                  (when (typep ge 'point)
+                                    (setf ge (assign-corners j i ge 1)))
+                                  (when (typep be 'point)
+                                    (setf be (assign-corners j i be 2)))
 
-                                (setf (aref image j i 0)
-                                      (scale r (facing re x y 0)))
-                                (setf (aref image j i 1)
-                                      (scale g (facing ge x y 1)))
-                                (setf (aref image j i 2)
-                                      (scale b (facing be x y 2)))
+                                  (setf (aref image j i 0)
+                                        (scale r (facing re x y 0)))
+                                  (setf (aref image j i 1)
+                                        (scale g (facing ge x y 1)))
+                                  (setf (aref image j i 2)
+                                        (scale b (facing be x y 2)))
 
 
-                                (setf (aref sample-colors j i 0)
-                                      (gethash re groups))
-                                (setf (aref sample-colors j i 1)
-                                      (gethash ge groups))
-                                (setf (aref sample-colors j i 2)
-                                      (gethash be groups)))
-                              (progn
-                                (setf (aref image j i 0)
-                                      (scale (abs a) (aref signs j i)))
-                                (setf (aref image j i 1)
-                                      (scale (abs a) (aref signs j i)))
-                                (setf (aref image j i 2)
-                                      (scale (abs a) (aref signs j i)))
+                                  (setf (aref sample-colors j i 0)
+                                        (gethash re groups))
+                                  (setf (aref sample-colors j i 1)
+                                        (gethash ge groups))
+                                  (setf (aref sample-colors j i 2)
+                                        (gethash be groups)))
+                                (progn
+                                  (setf (aref image j i 0)
+                                        (scale (abs a) (aref signs j i)))
+                                  (setf (aref image j i 1)
+                                        (scale (abs a) (aref signs j i)))
+                                  (setf (aref image j i 2)
+                                        (scale (abs a) (aref signs j i)))
 
-                                (setf (aref sample-colors j i 0) 0)
-                                (setf (aref sample-colors j i 1) 0)
-                                (setf (aref sample-colors j i 2) 0)))
-                          (setf (aref simage j i)
-                                (scale (abs a) (aref signs j i)))
-                          (setf (aref pimage j i)
-                                (scale (abs (pseudo-distance x y ae nil))
-                                       (aref signs j i)))
-                          (when mtsdf
-                            (setf (aref image j i 3)
-                                  (scale (abs a) (aref signs j i)))))))
+                                  (setf (aref sample-colors j i 0) 0)
+                                  (setf (aref sample-colors j i 1) 0)
+                                  (setf (aref sample-colors j i 2) 0)))
+                            (setf (aref simage j i)
+                                  (scale (abs a) (aref signs j i)))
+                            (setf (aref pimage j i)
+                                  (scale (abs (pseudo-distance x y ae nil))
+                                         (aref signs j i)))
+                            (when mtsdf
+                              (setf (aref image j i 3)
+                                    (scale (abs a) (aref signs j i))))))))
 
       (labels ((i (x)
                  (let ((i (floor (/ (+ x x1) dx))))

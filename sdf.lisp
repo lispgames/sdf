@@ -29,10 +29,12 @@
 
 
 (defun distance-to-shape (shape x y)
-  (let ((best most-positive-double-float)
+  (declare (optimize speed))
+  (let ((best most-positive-single-float)
         (best-node nil)
         (xy (v2 x y))
         (i 0))
+    (declare (type single-float best) (fixnum i))
     #++(format t "distance from ~s:~%" xy)
     (labels ((mm (node dist)
                (when (and dist (< (abs dist) (abs best)))
@@ -56,23 +58,67 @@
     #++(format t "distance from ~s = ~s:~%" xy best)
     (values best best-node)))
 
+(defun %distance-to-shape (x y points segments curves)
+  (declare (optimize speed))
+  (let ((best most-positive-single-float)
+        (abest most-positive-single-float)
+        (best-node nil)
+        (xy (v2 x y)))
+    (declare (type single-float best))
+    (labels ((mm (node dist)
+               (declare (type (or null single-float) dist))
+               (when (and dist (< (abs dist) abest))
+                 (setf best dist
+                       abest (abs dist)
+                       best-node node))))
+      (loop for p in points do (mm p (dist/v2-point/sf xy p)))
+      (loop for s in segments
+            when (<= (v2dist xy (sb-bc s))
+                     (+ abest (sb-br s)))
+              do (mm s (dist/v2-segment/sf xy s)))
+      (loop for c in curves
+            when (<= (v2dist xy (b2b-bc c))
+                     (+ abest (b2b-br c)))
+              do (mm c (dist/v2-bezier2/sf xy c))))
+    (values best best-node)))
+
+(defun %shape-to-parts-bounds (shape)
+  (let ((points nil)
+        (segments nil)
+        (curves nil))
+    (map-contour-segments
+     shape (lambda (c# node endp)
+             (declare (ignorable c# endp))
+             (etypecase node
+               (point
+                (push node points))
+               (segment
+                (push (segmentb node) segments))
+               (bezier2
+                (push (bezier2b node) curves)))))
+    (values points segments curves)))
+
 (defun render-sdf/sdf (sdf)
   (let* ((spread (spread sdf))
          (scale (pixel-scale sdf))
          (image (image sdf))
          (shape (cleaned-shape sdf))
          (signs (signs sdf)))
-    (loop with wy = (array-dimension image 0)
-          for j below wy
-          for y across (samples/y sdf)
-          do (loop for i below (array-dimension image 1)
-                   for x across (samples/x sdf)
-                   do (setf (aref image j i 0)
-                            (float
-                             (* (if (zerop (aref signs j i)) -1 1)
-                                (/ (distance-to-shape shape x y)
-                                   (* scale spread)))
-                             1.0))))))
+    (multiple-value-bind (points segments curves)
+        (%shape-to-parts-bounds shape)
+      (loop with wy = (array-dimension image 0)
+            for j below wy
+            for y across (samples/y sdf)
+            do (loop for i below (array-dimension image 1)
+                     for x across (samples/x sdf)
+                     do (setf (aref image j i 0)
+                              (float
+                               (* (if (zerop (aref signs j i)) -1 1)
+                                  (/ #++(distance-to-shape shape x y)
+                                     (%distance-to-shape
+                                      x y points segments curves)
+                                     (* scale spread)))
+                               1.0)))))))
 
 (defun pseudo-distance-to-shape (shape x y)
   (let ((d 0) (n nil))

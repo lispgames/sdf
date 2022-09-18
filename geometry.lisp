@@ -363,7 +363,7 @@
               (aa (* (- (signum r))
                      (expt (+ (abs r)
                               (sqrt r2-q3))
-                           1/3)))
+                           #. (coerce 1/3 'double-float))))
               (bb (if (zerop aa) 0d0 (/ q aa))))
          ;; r2>=r3, so r2-r3 is >=0
          (declare (type (double-float 0d0) r2-q3))
@@ -1479,3 +1479,92 @@
         (max 1d0 ;; used to compare T values in [0,1], so that's min epsilon
              (reduce 'max (p-dv (s-p1 b)) :key 'abs)
              (reduce 'max (p-dv (s-p2 b)) :key 'abs))))))
+
+;; variants of point, bezier and segment with some extra slots for
+;; optimizing distance calcs
+(defstruct (pointb
+            (:include point)
+            (:conc-name pb-)
+            (:constructor %make-pointb (rv dv bc br &optional
+                                           (rm 0) (gm 0) (bm 0) n)))
+  ;; bounding circle radius and center
+  (br 0d0 :type double-float)
+  (bc (v2 0d0 0d0) :type v2)
+  ;; msdf masks
+  (rm T :type (or t nil))
+  (gm T :type (or t nil))
+  (bm T :type (or t nil))
+  ;; original node
+  (n (make-point) :type point))
+
+(defun pointb (p &optional (r 0) (g 0) (b 0))
+  (let* ((dv (p-dv p))
+         (rv (p-rv p)))
+    (%make-pointb rv dv dv 0d0 r g b p)))
+
+(defstruct (segmentb
+            (:include segment)
+            (:conc-name sb-)
+            (:constructor %make-segmentb (p1 p2 bc br &optional
+                                             (rm 0) (gm 0) (bm 0) n)))
+  ;; bounding circle radius and center
+  (br 0d0 :type double-float)
+  (bc (v2 0d0 0d0) :type v2)
+  ;; msdf masks
+  (rm T :type (or t nil))
+  (gm T :type (or t nil))
+  (bm T :type (or t nil))
+  ;; original node
+  (n (error "required slot") :type segment))
+
+(defun segmentb (s &optional (r 0) (g 0) (b 0))
+  (let* ((p1 (s-p1 s))
+         (p2 (s-p2 s))
+         (v1 (p-dv p1))
+         (v2 (p-dv p2)))
+    (%make-segmentb p1 p2 (v2lerp v1 v2 0.5) (/ (v2dist v1 v2) 2) r g b s)))
+
+(defstruct (bezier2b
+            (:include bezier2)
+            (:conc-name b2b-)
+            (:constructor %make-bezier2b (p1 c1 p2 bc br &optional
+                                             (rm 0) (gm 0) (bm 0) n)))
+  ;; bounding circle radius and center
+  (br 0d0 :type double-float)
+  (bc (v2 0d0 0d0) :type v2)
+  ;; msdf masks
+  (rm T :type (or t nil))
+  (gm T :type (or t nil))
+  (bm T :type (or t nil))
+  ;; original node
+  (n (error "required slot") :type bezier2))
+
+(defun bezier2b (b2 &optional (r 0) (g 0) (b 0))
+  (flet ((c2 (a b c)
+           (let ((p (v2lerp a b 0.5))
+                 (r (/ (v2dist a b) 2)))
+             (when (<= (v2dist p c) r)
+               (list p r))))
+         (c3 (a b c)
+           (let* ((b (v2- b a))
+                  (c (v2- c a))
+                  (1/d (/ (* 2 (v2x b c))))
+                  (bx2+by2 (+ (expt (vx b) 2) (expt (vy b) 2)))
+                  (cx2+cy2 (+ (expt (vx c) 2) (expt (vy c) 2)))
+                  (x (* 1/d (- (* (vy c) bx2+by2)
+                               (* (vy b) cx2+cy2))))
+                  (y (* 1/d (- (* (vx b) cx2+cy2)
+                               (* (vx c) bx2+by2))))
+                  (p (v2 x y)))
+             (list (v2+ a p) (v2mag p)))))
+    (let* ((p1 (b2-p1 b2))
+           (c1 (b2-c1 b2))
+           (p2 (b2-p2 b2))
+           (v1 (p-dv p1))
+           (v2 (p-dv c1))
+           (v3 (p-dv p2))
+           (bounds (or (c2 v1 v2 v3)
+                       (c2 v1 v3 v2)
+                       (c2 v3 v2 v1)
+                       (c3 v1 v2 v3))))
+      (%make-bezier2b p1 c1 p2 (first bounds) (second bounds) r g b b2))))
