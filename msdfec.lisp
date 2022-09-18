@@ -39,7 +39,7 @@
                  image)
            (type (simple-array single-float (* *)) pimage)
            (type (simple-array bit (* *)) protected)
-           (type (simple-array t (* *)) corner-cells)
+           (type (simple-array bit (* *)) corner-cells)
            (optimize speed))
   ;; 'protect' samples around a corner of shape
   (let ((wx (array-dimension image 1))
@@ -50,7 +50,7 @@
                (setf (aref protected j i) 1))))
       (loop for j below wy
             do (loop for i below wx
-                     when (aref corner-cells j i)
+                     when (plusp (aref corner-cells j i))
                        do (cc j i)
                           (cc (1+ j) i)
                           (cc j (1+ i))
@@ -317,6 +317,7 @@
                      (simple-array single-float (* * 4)))
                  image)
            (type (simple-array single-float (* *)) pimage)
+           (type (simple-array bit (* *)) corner-cells)
            (optimize speed))
   (let ((protected (make-array (array-dimensions pimage)
                                :element-type 'bit :initial-element 0))
