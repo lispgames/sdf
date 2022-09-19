@@ -59,7 +59,7 @@
 
 
 
-(declaim (inline %make-point make-point p-dv p-x p-y))
+(declaim (inline %make-point make-point p-dv p-x p-y p-rx p-ry p-dx p-dy))
 
 (defstruct (point (:conc-name p-)
                   (:constructor %make-point (rv dv)))
@@ -95,10 +95,11 @@
   ;; todo: decide if it is safe to reuse input point
   (%make-point (rv2 (vx v) (vy v)) (v2 (vx v) (vy v))))
 
+(declaim (inline point=))
 (defun point= (p1 p2)
   (or (eq p1 p2)
-      (and (= (p-rx p1) (p-rx p2))
-           (= (p-ry p1) (p-ry p2)))))
+      (and (= (p-dx p1) (p-dx p2))
+           (= (p-dy p1) (p-dy p2)))))
 
 (declaim (inline %make-segment s-p1 s-p2
                  s-rx1 s-ry1 s-rx2 s-ry2
