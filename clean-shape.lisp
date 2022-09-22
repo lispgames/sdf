@@ -1680,10 +1680,11 @@
                        for e2 = (when n2 (rb:value n2))
                        for swap = nil
                        while n2
-                       do (let ((i* (multiple-value-list
-                                     (b::intersect/range (edge e1) (edge e2)
-                                                         (t1 e1) (t2 e1)
-                                                         (t1 e2) (t2 e2)))))
+                       do (let ((i* (unless (eql (edge e1) (edge e2))
+                                      (multiple-value-list
+                                       (b::intersect/range (edge e1) (edge e2)
+                                                           (t1 e1) (t2 e1)
+                                                           (t1 e2) (t2 e2))))))
                             (when verbose
                               (format t "??? @~s:  ~s~%  ~s~% intersections ~s~%"
                                       y (nl e1) (nl e2) i*))
