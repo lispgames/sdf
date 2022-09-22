@@ -771,7 +771,7 @@
          (tb (* 2 (- (vy rc) (vy r1))))
          (tc (vy r1))
          (r (- (expt tb 2) (* 4 ta tc)))
-         (eps (* 128 (max (the double-float (%bcs-eps a))
+         (eps (* 512 (max (the double-float (%bcs-eps a))
                           (the double-float (%bcs-eps b))))))
     (flet ((in (a b c)
              (if (<= a c) (<= a b c) (<= c b a)))
