@@ -522,7 +522,23 @@
                                   (cond
                                     ((empty-seg n)
                                      (break "new seg ~s~%" n)
-                                     (setf ret (collapse-edge n)))))
+                                     (setf ret (collapse-edge n)))
+                                    ((flat-seg n)
+                                     (loop with f = (flat-seg n)
+                                           for n1 = (enext n)
+                                           for n2 = (enext n1)
+                                           when (or (eql n1 n)
+                                                    (eql n2 n))
+                                             ;; deleted contour, drop it
+                                             do (return-from x nil)
+                                           while (or (empty-seg n2)
+                                                     (gethash n2 drop)
+                                                     (and (flat-seg-cont f n2)
+                                                          (not (eql n n2))))
+                                           do (%delete-node n1)
+                                              (%delete-node n2))
+                                     (when (empty-seg n)
+                                       (setf ret (eprev (collapse-edge n)))))))
                                  (es-contour-bezier2
                                   (cond
                                     ((empty-bez n)
