@@ -88,7 +88,14 @@
            (if (= (length y) 6)
                `(b2 ,@y)
                `(s ,@y))))
-    `(ixr ,(x a) ,a0 ,a1 ,(x b) ,b0 ,b1 ,@r)))
+    `(ixr ,(x a) ,a0 ,a1 ,(x b) ,b0 ,b1 ,@r)
+    `(ixr ,(x b) ,b0 ,b1 ,(x a) ,a0 ,a1
+          ,@(loop for v in r
+                  collect (if (= 4 (length v))
+                              (let ((c (copy-seq v)))
+                                (rotatef (aref c 2) (aref c 3))
+                                c)
+                              v)))))
 
 (defun check-bclip (a a0 a1 b b0 b1)
   (let ((i (finish (qi::intersect

@@ -1,5 +1,5 @@
 #++
-(ql:quickload '(sdf/test no-sleep))
+(ql:quickload '(sdf/test no-sleep md5))
 (defpackage #:sdf-leak-test
   (:use :cl)
   (:local-nicknames (:a :alexandria-2)

@@ -383,6 +383,7 @@
 (defvar *show-g2* nil)
 
 (defun add-font (f)
+  (setf i::*shapes* nil)
   (zpb-ttf:with-font-loader (ttf f)
     (loop with cc = (zpb-ttf:glyph-count ttf)
           for i below cc
@@ -390,12 +391,21 @@
                (unwind-protect
                     (let* ((g (zpb-ttf:index-glyph i ttf))
                            (s (sdf/ttf::shape-from-glyph g)))
-                      (sb-ext:atomic-push
-                       (list 0 s 0 0 f i
-                             (zpb-ttf:postscript-name g)
-                             (let ((c (zpb-ttf:code-point g)))
-                               (when c (code-char c))))
-                       sdf/cleaner::*shapes*))
+                      (unless (zerop (length (sdf/base::contours s)))
+                        (if (ignore-errors
+                             (sdf/cleaner::fix-shape s))
+                            (sb-ext:atomic-push
+                             (list 0 s 0 0 f i
+                                   (zpb-ttf:postscript-name g)
+                                   (let ((c (zpb-ttf:code-point g)))
+                                     (when c (code-char c))))
+                             sdf/cleaner::*shapes*)
+                            (sb-ext:atomic-push
+                             (list 0 s 0 0 f i
+                                   (zpb-ttf:postscript-name g)
+                                   (let ((c (zpb-ttf:code-point g)))
+                                     (when c (code-char c))))
+                             sdf/cleaner::*error-shapes*))))
                  (format t "~&==~s / ~s==~%" i cc)))))
   )
 #++

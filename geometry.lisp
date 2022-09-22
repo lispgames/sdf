@@ -520,18 +520,22 @@
           p0)))
 
 
-(defun eval-at/b2/fast (b at)
+(declaim (inline %eval-at/b2/fast))
+(defun %eval-at/b2/fast (p0 p1 p2 at)
   (cond
-    ((zerop at) (p-dv (b2-p1 b)))
-    ((= at 1) (p-dv (b2-p2 b)))
-    (t (let* ((p0 (p-dv (b2-p1 b)))
-              (p1 (p-dv (b2-c1 b)))
-              (p2 (p-dv (b2-p2 b)))
-              (d1 (v2- p1 p0))
+    ((zerop at) p0)
+    ((= at 1) p2)
+    (t (let* ((d1 (v2- p1 p0))
               (d2 (v2+ p0 (v2+ (v2scale p1 -2) p2))))
          (v2+ (v2+ (v2scale d2 (* at at))
                    (v2scale d1 (* 2 at)))
               p0)))))
+
+(defun eval-at/b2/fast (b at)
+  (%eval-at/b2/fast (p-dv (b2-p1 b))
+                    (p-dv (b2-c1 b))
+                    (p-dv (b2-p2 b))
+                    at))
 
 (defun eval-at (x at)
   (etypecase x
@@ -1461,7 +1465,28 @@
                       (values r1 r2)
                       r1)))
                (bezier2
-                (intersect-bezier2-bezier2/range a b at1 at2 bt1 bt2)))))
+                ;; sort arguments to avoid slightly different results
+                ;; depending on argument order
+                (labels ((d (a b) (when (/= a b) (signum (- a b))))
+                         (p (a b) (or (d (vx a) (vx b))
+                                      (d (vy a) (vy b)))))
+                  (let ((s (or (p (b2-dp1 a) (b2-dp1 b))
+                               (p (b2-dc1 a) (b2-dc1 b))
+                               (p (b2-dp2 a) (b2-dp2 b)))))
+                    (cond
+                      ((or (not s) (plusp s))
+                       (intersect-bezier2-bezier2/range a b at1 at2 bt1 bt2))
+                      (t
+                       (multiple-value-bind (r1 r2)
+                           (intersect-bezier2-bezier2/range b a bt1 bt2 at1 at2)
+                         (when r1
+                           (rotatef (aref r1 2) (aref r1 3)))
+                         (cond
+                           (r2
+                            (rotatef (aref r2 2) (aref r2 3))
+                            (values r1 r2))
+                           (r1
+                            (values r1))))))))))))
       (etypecase a
         (segment (segment a b))
         (bezier2 (bezier2 a b))))))

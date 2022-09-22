@@ -528,10 +528,28 @@
                     (v2 (b::p-rv (b::b2-p2 b)))
                     (y1 (b::vy v1))
                     (yc (b::vy vc))
-                    (y2 (b::vy v2))
-                    (yc-y1 (- yc y1)))
-               ;; return T of extreme point on curve
-               (/ yc-y1 (- yc-y1 (- y2 yc)))))
+                    (y2 (b::vy v2)))
+               ;; sort endpoints so we get same results for regardless
+               ;; of curve direction
+               (labels ((d (a b) (when (/= a b) (signum (- a b))))
+                        (p (a b) (or (d (b::vx a) (b::vx b))
+                                     (d (b::vy a) (b::vy b)))))
+                 ;; return T of extreme point on curve
+                 (let ((s (p v1 v2)))
+                   (cond
+                     ((or (not s) (plusp s))
+                      (let* ((yc-y1 (- yc y1))
+                             (at (/ yc-y1 (- yc-y1 (- y2 yc)))))
+                        (values at (b::eval-at/b2/fast b at))))
+                     (t
+                      (rotatef y1 y2)
+                      (let* ((yc-y1 (- yc y1))
+                             (at1 (/ yc-y1 (- yc-y1 (- y2 yc))))
+                             (p (b::%eval-at/b2/fast (b::b2-dp2 b)
+                                                     (b::b2-dc1 b)
+                                                     (b::b2-dp1 b)
+                                                     at1)))
+                        (values (- 1 at1) p))))))))
            (add-pair (up e x1 y1 at1 x2 y2 at2)
              (if up
                  (progn
@@ -593,22 +611,23 @@
                   (if (is-extreme c shape)
                       ;; contains an extreme Y value, split and add
                       ;; as 2 pieces
-                      (let* ((at (float (split-b c) 1d0))
-                             (p (b::eval-at/b2/fast c at))
-                             (xe (b::vx p))
-                             (ye (b::vy p))
-                             (up (> ye y1)))
-                        (assert (eql up (> ye y2)))
-                        (add-pair up (make-edge :edge c
-                                                :split-point p
-                                                :t1 (if up 0d0 at)
-                                                :t2 (if up at 0d0))
-                                  x1 y1 0d0 xe ye at)
-                        (add-pair up (make-edge :edge c
-                                                :split-point p
-                                                :t1 (if up 1d0 at)
-                                                :t2 (if up at 1d0))
-                                  x2 y2 1d0 xe ye at))
+                      (multiple-value-bind (at p)
+                          (split-b c)
+                        (let* ((at (float at 1d0))
+                               (xe (b::vx p))
+                               (ye (b::vy p))
+                               (up (> ye y1)))
+                          (assert (eql up (> ye y2)))
+                          (add-pair up (make-edge :edge c
+                                                  :split-point p
+                                                  :t1 (if up 0d0 at)
+                                                  :t2 (if up at 0d0))
+                                    x1 y1 0d0 xe ye at)
+                          (add-pair up (make-edge :edge c
+                                                  :split-point p
+                                                  :t1 (if up 1d0 at)
+                                                  :t2 (if up at 1d0))
+                                    x2 y2 1d0 xe ye at)))
                       ;; normal, just add directly
                       (let* ((up (< y1 y2))
                              (e (make-edge :edge c
@@ -1269,7 +1288,7 @@
           ;; either way, we don't have anything else to do here
           (finish-updates)
           (return-from update-sweep-contours nil))
-        (when (and (zerop winding-in-left))
+        (when (not (zerop winding-in-left))
           ;; we are starting outside shape, so match first edge with
           ;; either a horizontal, first edge from -out, a new
           ;; horizontal, or last edge from -in
@@ -1301,12 +1320,12 @@
                     (b (last intersect-in)))
                (when verbose (format t " in-left >< in-right~%"))
                (assert b)
-               (assert (zerop winding-in-right))
+               (assert (not (zerop winding-in-right)))
                ;; todo: get rid of extra passes through list
                (setf intersect-in (butlast intersect-in))
                (assert (evenp (length intersect-in)))
                (join-existing a (car b))))))
-        (when  (and (zerop winding-out-left)
+        (when  (and (not (zerop winding-out-left))
                     (/= (signum winding-out-left)
                         (signum winding-out-right)))
           ;; we are still inside shape as we leave the intersection,
@@ -1321,7 +1340,7 @@
              (continue-contour h-in (pop intersect-out))
              (setf winding-out-left 0)
              (setf h-in nil))
-            ((and h-out winding-out-right)
+            ((and h-out (zerop winding-out-right))
              (when verbose (format t " new contour out-left <-> h-out~%"))
              (start-contour (pop intersect-out) h-out)
              (setf h-out nil))
@@ -1889,46 +1908,53 @@ b ~s~%   x=~s, angle=~s~%"
                ;; node involved in intersection, rather than one past,
                ;; so we can use them for sort and then expand by 1 more.
                #++(setf first nil)
-               (let ((n1 (%node ref)))
-                 (assert (= x (x-at (rb:value n1) y)))
-                 (loop for n = n1 then prev
-                       for v = (rb:value n)
-                       for prev = (rb:previous n)
-                       while (and prev (= x (x-at (rb:value prev) y)))
-                       finally (setf istart n)))
-               (let ((n1 (rb:next (%node ref))))
-                 (if (and n1 (= x (x-at (rb:value n1) y)))
-                     (loop for n = n1 then next
+               (let ((eps (* 16 (b::%bcs-eps (edge ref)))))
+                 (flet ((~=x (n)
+                          (let* ((xn (x-at (rb:value n) y))
+                                 (r (< (abs (- x xn))eps)))
+                            (when (and r (/= x xn))
+                              (setf (slot-value (rb:value n) 'x) x))
+                            r)))
+                   (let ((n1 (%node ref)))
+                     (assert (~=x n1))
+                     (loop for n = n1 then prev
                            for v = (rb:value n)
-                           for next = (rb:next n)
-                           while (and next (= x (x-at (rb:value next) y)))
-                           finally (setf iend n))
-                     (setf iend (%node ref))))
-               (when *check*
-                 (assert (not (a:xor istart iend)))
-                 (when istart
-                   (assert (= x (x-at (rb:value istart) y)))
-                   (assert (= x (x-at (rb:value iend) y)))
-                   (when (rb:previous istart)
-                     (assert (< (x-at (rb:value (rb:previous istart)) y) x)))
-                   (when (rb:next iend)
-                     (assert (> (x-at (rb:value (rb:next iend)) y) x)))
-                   (when verbose
-                     (format t "fib @ ~s~%" (nl ref))
-                     (loop for n = (or (rb:previous (rb:previous istart))
-                                       (rb:previous istart)
-                                       istart)
-                             then (rb:next n)
-                           do (format t "::~a~a ~s ~s~%"
-                                      (if (eql n istart) "S" " ")
-                                      (if (eql n iend) "E" " ")
-                                      (ri (x-at (rb:value n) y))
-                                      (nl (rb:value n)))
-                           until (eql n (or (rb:next (rb:next iend))
-                                            (rb:next iend)
-                                            iend))
-                           ;; if we hit end, start/end were out of order?
-                           do (assert n)))))
+                           for prev = (rb:previous n)
+                           while (and prev (~=x prev))
+                           finally (setf istart n)))
+                   (let ((n1 (rb:next (%node ref))))
+                     (if (and n1 (~=x n1))
+                         (loop for n = n1 then next
+                               for v = (rb:value n)
+                               for next = (rb:next n)
+                               while (and next (~=x next))
+                               finally (setf iend n))
+                         (setf iend (%node ref))))
+                   (when *check*
+                     (assert (not (a:xor istart iend)))
+                     (when istart
+                       (assert (~=x istart))
+                       (assert (~=x iend))
+                       (when (rb:previous istart)
+                         (assert (< (x-at (rb:value (rb:previous istart)) y) x)))
+                       (when (rb:next iend)
+                         (assert (> (x-at (rb:value (rb:next iend)) y) x)))
+                       (when verbose
+                         (format t "fib @ ~s~%" (nl ref))
+                         (loop for n = (or (rb:previous (rb:previous istart))
+                                           (rb:previous istart)
+                                           istart)
+                                 then (rb:next n)
+                               do (format t "::~a~a ~s ~s~%"
+                                          (if (eql n istart) "S" " ")
+                                          (if (eql n iend) "E" " ")
+                                          (ri (x-at (rb:value n) y))
+                                          (nl (rb:value n)))
+                               until (eql n (or (rb:next (rb:next iend))
+                                                (rb:next iend)
+                                                iend))
+                               ;; if we hit end, start/end were out of order?
+                               do (assert n)))))))
                ;; update intersection-in before we sort or update
                ;; windings, since we want incoming order and boundary
                ;; flags (possibly should do this before actually
@@ -2107,6 +2133,14 @@ b ~s~%   x=~s, angle=~s~%"
            (format t "single intersect:y=~s: ~s~%l ~s~%r ~s~%"
                    y e (nl (left (car e))) (nl (right (car e)))))
          (assert (typep e1 'intersect-event))
+         (when verbose
+           (unless (%node (left e1)) (format t "  left edges not in sweep~%"))
+           (unless (%node (right e1)) (format t "  right edge not in sweep~%")))
+         (when (and (not (%node (left e1)))
+                    (not (%node (right e1))))
+           ;; assuming it was already handled by a nearby intersection
+           ;; event now that they accept x values within a small range
+           (return-from update-sweep-1 nil))
          (assert (%node (left e1)))
          (assert (%node (right e1)))
          (setf istart (prev (%node (left e1))))
@@ -2468,7 +2502,8 @@ b ~s~%   x=~s, angle=~s~%"
                            (when verbose
                              (format t " stack boundary count ~s~%" n)))
                           (2 ;; cancels out, remove
-                           (format t " stack boundary count ~s, clearing~%" n)
+                           (when verbose
+                             (format t " stack boundary count ~s, clearing~%" n))
                            (loop for i in stack do (setf (on-boundary i) nil))
                            (setf intersect-out
                                  (remove-if-not 'on-boundary intersect-out)))

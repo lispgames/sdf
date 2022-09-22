@@ -330,12 +330,22 @@
                (select-edge-for-point-and-color (n x y c)
                  (assert (typep n 'point))
                  (let* ((d (v2- (v2 x y) (p-dv n)))
-                        (s (- (v2x d (cdr (gethash n corners)))))
+                        (cc (gethash n corners))
+                        (s (- (v2x d (Cdr cc))))
                         (prev (prev shape n))
                         (pmask (gethash prev colors))
                         (next (next shape n))
                         (nmask (gethash next colors)))
+                   (declare (type (cons (or single-float double-float) v2) cc))
                    (cond
+                     ((> (abs (car cc))
+                         #.(- pi (* 128 (* pi double-float-epsilon))))
+                      ;; special case for 2 edges entering point at
+                      ;; same angle, making a flat point which would
+                      ;; leave msdf with an infinite line of ±0
+                      ;; extending along that line. we will just use
+                      ;; distance from point in that case
+                      n)
                      ((and (plusp s) (or (not c) (nth c pmask)))
                       prev)
                      ((and (not (plusp s)) (or (not c) (nth c nmask)))
@@ -353,9 +363,9 @@
                  (declare (type single-float x y))
                  (etypecase n
                    (point
-                    (pseudo-distance x y
-                                     (select-edge-for-point-and-color n x y c)
-                                     c))
+                    (let ((e (select-edge-for-point-and-color n x y c)))
+                      (unless (typep e 'point)
+                        (pseudo-distance x y e c))))
                    (segment
                     (nth-value 1 (dist/v2-segment/sf* (v2 x y) n)))
                    (bezier2
@@ -428,9 +438,15 @@
                               (declare (type single-float a))
                               #++(distance-to-shape/rgb shape x y colors)
                               (if (and re ge be)
-                                  (let ((r (pseudo-distance x y re 0))
-                                        (g (pseudo-distance x y ge 1))
-                                        (b (pseudo-distance x y be 2)))
+                                  (let ((r (or (pseudo-distance x y re 0)
+                                               (* a (if (zerop (aref signs j i))
+                                                        -1 1))))
+                                        (g (or (pseudo-distance x y ge 1)
+                                               (* a (if (zerop (aref signs j i))
+                                                        -1 1))))
+                                        (b (or (pseudo-distance x y be 2)
+                                               (* a (if (zerop (aref signs j i))
+                                                        -1 1)))))
                                     (declare (type single-float r g b))
                                     (when (typep re 'point)
                                       (setf re (assign-corners j i re 0)))
@@ -452,7 +468,8 @@
                               (setf (aref simage j i)
                                     (scale (abs a) (aref signs j i)))
                               (setf (aref pimage j i)
-                                    (scale (abs (f (pseudo-distance x y ae nil)))
+                                    (scale (abs (f (or (pseudo-distance x y ae nil)
+                                                       a)))
                                            (aref signs j i)))
                               (when mtsdf
                                 (setf (aref image j i 3)
@@ -497,6 +514,25 @@
                                                 (i (p-dx n)))
                                           1)))))
 
+        (let ((img image))
+          (declare (optimize (speed 1)))
+          (destructuring-bind (wy wx c) (array-dimensions img)
+            (declare (ignore c))
+            (flet ((med3 (x y)
+                     (let ((a (aref img y x 0))
+                           (b (aref img y x 1))
+                           (c (aref img y x 2)))
+                       (max (min a b) (min (max a b) c)))))
+              (loop for i below wx
+                    do (assert (minusp (med3 i 0)))
+                       (assert (minusp (med3 i (1- wy))))
+                       (assert (minusp (aref img 0 i 3)))
+                       (assert (minusp (aref img (1- wy) i 3))))
+              (loop for j below wy
+                    do (assert (minusp (med3 0 j)))
+                       (assert (minusp (med3 (1- wx) j)))
+                       (assert (minusp (aref img j 0 3)))
+                       (assert (minusp (aref img j (1- wx) 3)))))))
         (fix-msdf image pimage corner-cells)
 
         (when *limit-msdf-range*

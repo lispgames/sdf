@@ -125,6 +125,12 @@
                  rv2dist rv2scale rv2mag rv2n rv2rx))
 
 (defun rv2 (x y)
+  ;; make sure we don't accidentally use single-floats while assuming
+  ;; they are rationals
+  (when (typep x 'single-float)
+    (setf x (coerce x 'double-float)))
+  (when (typep y 'single-float)
+    (setf y (coerce y 'double-float)))
   (make-array 2 :element-type 'real
                 :initial-contents (list x y)))
 
