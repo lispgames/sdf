@@ -2191,6 +2191,21 @@ b ~s~%   x=~s, angle=~s~%"
              (when *check*
                (assert (a:set-equal (rb::to-list rb) (dbg-added sweep)))))
            (when (or ie se ee hie)
+             (let ((in 0)
+                   (out 0))
+               (flet ((io (x)
+                        (if (%node x) (incf in) (incf out))))
+                 (when ie
+                   (map nil (a:compose #'io #'left) ie)
+                   (map nil (a:compose #'io #'right) ie))
+                 (when se (map nil (a:compose #'io #'start) se))
+                 (when ee (map nil (a:compose #'io #'end) ee))
+                 (when hie (map nil (a:compose #'io #'edge) hie)))
+               (assert (or (zerop in) (zerop out)))
+               (when (zerop in)
+                 (when verbose
+                   (format t " no edges in sweep~%"))
+                 (return-from update-sweep-1 nil)))
              (find-intersection-bounds (cond
                                          (ie
                                           (left (car ie)))
