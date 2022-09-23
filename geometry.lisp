@@ -951,8 +951,13 @@
                (return-from %intersect/tan nil)))
          ;; scale so one curve is 0,0 1,0 1,1
          (m3 (scale (/ (vx a5)) (/ (vy a5))))
-         (a6 (mv* m3 a5))
-         (b6 (mv* m3 b5)))
+         #++(a6 (mv* m3 a5))
+         (b6 (mv* m3 b5))
+         (eps (* 16 (* double-float-epsilon
+                       (max (abs (vx p1)) (abs (vy p1))
+                            (abs (vx pc)) (abs (vy pc))
+                            (abs (vx a2)) (abs (vy a2))
+                            (abs (vx b2)) (abs (vy b2)))))))
     (declare (ignore r1 r2))
     ;; x₁ = 2t₁-t₁²
     ;; y₁ = t₁²
@@ -1029,16 +1034,19 @@
              (b (vy b6))
              (t2 (/ (* 2 (- (sqrt b) 1))
                     (+ a b -2)))
-             (t1 (* t2 (sqrt b))))
-        (flet ((e (p2 at)
-                 (let ((d1 (v2- pc p1))
-                       (d2 (v2+ p1 (v2+ (v2scale pc -2) p2))))
-                   (v2+ (v2+ (v2scale d2 (* at at))
-                             (v2scale d1 (* 2 at)))
-                        p1))))
-          (if (eql ref :a)
-              (v2->4 (e b2 t2) t1 t2)
-              (v2->4 (e a2 t2) t2 t1)))))))
+             (t1 (* t2 (sqrt b)))
+             (1-eps (- 1 eps)))
+        (when (and (< eps t1 1-eps)
+                   (< eps t2 1-eps))
+          (flet ((e (p2 at)
+                   (let ((d1 (v2- pc p1))
+                         (d2 (v2+ p1 (v2+ (v2scale pc -2) p2))))
+                     (v2+ (v2+ (v2scale d2 (* at at))
+                               (v2scale d1 (* 2 at)))
+                          p1))))
+            (if (eql ref :a)
+                (v2->4 (e b2 t2) t1 t2)
+                (v2->4 (e a2 t2) t2 t1))))))))
 
 
 
