@@ -1559,7 +1559,8 @@
          (winding-in-right nil)
          ;; winding number before and after this intersection, after updates
          (winding-out-left nil)
-         (winding-out-right nil))
+         (winding-out-right nil)
+         (eps (* 256 double-float-epsilon (max 1 (abs x) (abs y)))))
     ;; remove any horizontal edges that completed since last event
     ;; (should be none since we should always have a start or end
     ;;  event for an adjacent segment at end of horizontal span)
@@ -1693,7 +1694,9 @@
                                 (setf i* (sort i* '< :key 'b::vy)))
                               (loop
                                 for i1 in i*
-                                do (when (> (b::vy i1) y)
+                                do (when (or (> (b::vy i1) (+ y eps))
+                                             (and (> (b::vy i1) y)
+                                                  (> (b::vx i1) (+ x eps))))
                                      (when verbose
                                        (format t "#### add intersection event ~s:~% ~s~% ~s~%"
                                                i1 (nl e1) (nl e2)))
@@ -1909,53 +1912,52 @@ b ~s~%   x=~s, angle=~s~%"
                ;; node involved in intersection, rather than one past,
                ;; so we can use them for sort and then expand by 1 more.
                #++(setf first nil)
-               (let ((eps (* 256 (b::%bcs-eps (edge ref)))))
-                 (flet ((~=x (n)
-                          (let* ((xn (x-at (rb:value n) y))
-                                 (r (< (abs (- x xn))eps)))
-                            (when (and r (/= x xn))
-                              (setf (slot-value (rb:value n) 'x) x))
-                            r)))
-                   (let ((n1 (%node ref)))
-                     (assert (~=x n1))
-                     (loop for n = n1 then prev
-                           for v = (rb:value n)
-                           for prev = (rb:previous n)
-                           while (and prev (~=x prev))
-                           finally (setf istart n)))
-                   (let ((n1 (rb:next (%node ref))))
-                     (if (and n1 (~=x n1))
-                         (loop for n = n1 then next
-                               for v = (rb:value n)
-                               for next = (rb:next n)
-                               while (and next (~=x next))
-                               finally (setf iend n))
-                         (setf iend (%node ref))))
-                   (when *check*
-                     (assert (not (a:xor istart iend)))
-                     (when istart
-                       (assert (~=x istart))
-                       (assert (~=x iend))
-                       (when (rb:previous istart)
-                         (assert (< (x-at (rb:value (rb:previous istart)) y) x)))
-                       (when (rb:next iend)
-                         (assert (> (x-at (rb:value (rb:next iend)) y) x)))
-                       (when verbose
-                         (format t "fib @ ~s~%" (nl ref))
-                         (loop for n = (or (rb:previous (rb:previous istart))
-                                           (rb:previous istart)
-                                           istart)
-                                 then (rb:next n)
-                               do (format t "::~a~a ~s ~s~%"
-                                          (if (eql n istart) "S" " ")
-                                          (if (eql n iend) "E" " ")
-                                          (ri (x-at (rb:value n) y))
-                                          (nl (rb:value n)))
-                               until (eql n (or (rb:next (rb:next iend))
-                                                (rb:next iend)
-                                                iend))
-                               ;; if we hit end, start/end were out of order?
-                               do (assert n)))))))
+               (flet ((~=x (n)
+                        (let* ((xn (x-at (rb:value n) y))
+                               (r (< (abs (- x xn))eps)))
+                          (when (and r (/= x xn))
+                            (setf (slot-value (rb:value n) 'x) x))
+                          r)))
+                 (let ((n1 (%node ref)))
+                   (assert (~=x n1))
+                   (loop for n = n1 then prev
+                         for v = (rb:value n)
+                         for prev = (rb:previous n)
+                         while (and prev (~=x prev))
+                         finally (setf istart n)))
+                 (let ((n1 (rb:next (%node ref))))
+                   (if (and n1 (~=x n1))
+                       (loop for n = n1 then next
+                             for v = (rb:value n)
+                             for next = (rb:next n)
+                             while (and next (~=x next))
+                             finally (setf iend n))
+                       (setf iend (%node ref))))
+                 (when *check*
+                   (assert (not (a:xor istart iend)))
+                   (when istart
+                     (assert (~=x istart))
+                     (assert (~=x iend))
+                     (when (rb:previous istart)
+                       (assert (< (x-at (rb:value (rb:previous istart)) y) x)))
+                     (when (rb:next iend)
+                       (assert (> (x-at (rb:value (rb:next iend)) y) x)))
+                     (when verbose
+                       (format t "fib @ ~s~%" (nl ref))
+                       (loop for n = (or (rb:previous (rb:previous istart))
+                                         (rb:previous istart)
+                                         istart)
+                               then (rb:next n)
+                             do (format t "::~a~a ~s ~s~%"
+                                        (if (eql n istart) "S" " ")
+                                        (if (eql n iend) "E" " ")
+                                        (ri (x-at (rb:value n) y))
+                                        (nl (rb:value n)))
+                             until (eql n (or (rb:next (rb:next iend))
+                                              (rb:next iend)
+                                              iend))
+                             ;; if we hit end, start/end were out of order?
+                             do (assert n))))))
                ;; update intersection-in before we sort or update
                ;; windings, since we want incoming order and boundary
                ;; flags (possibly should do this before actually
