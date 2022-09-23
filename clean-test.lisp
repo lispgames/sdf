@@ -129,6 +129,3 @@
                  for r = (aref img j i 1)
                  do (format t "~a" (if (zerop r) "*" " ")))
            (terpri)))
-
-#++
-(test-clean-shape (b::parse-shape "{ 0,0;10,0;10,10;(5,5);0,10; #}"))
