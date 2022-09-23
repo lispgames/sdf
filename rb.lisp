@@ -37,6 +37,9 @@
 #++
 (u:define-printer (tree stream :type nil)
     (format stream "RED-BLACK-TREE"))
+(defmethod print-object ((o tree) stream)
+  (print-unreadable-object (o stream :identity t)
+    (format stream "rb tree")))
 
 (declaim (inline %make-node))
 (defstruct (node
@@ -55,6 +58,9 @@
 #++
 (u:define-printer (node stream :type nil)
     (format stream "RED-BLACK-TREE-NODE"))
+(defmethod print-object ((o node) stream)
+  (print-unreadable-object (o stream :identity t)
+    (format stream "rb tree node")))
 
 (fn-> make-node (tree t) node)
 (defun make-node (tree item)
