@@ -1909,7 +1909,7 @@ b ~s~%   x=~s, angle=~s~%"
                ;; node involved in intersection, rather than one past,
                ;; so we can use them for sort and then expand by 1 more.
                #++(setf first nil)
-               (let ((eps (* 16 (b::%bcs-eps (edge ref)))))
+               (let ((eps (* 256 (b::%bcs-eps (edge ref)))))
                  (flet ((~=x (n)
                           (let* ((xn (x-at (rb:value n) y))
                                  (r (< (abs (- x xn))eps)))
