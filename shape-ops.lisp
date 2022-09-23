@@ -514,7 +514,7 @@
             (loop for c in (contours es)
                   collect (map-modifying-contour
                            c
-                           (lambda (n)
+                           (a:named-lambda x (n)
                              (let ((ret n)) ;; return node if we don't modify it
                                (etypecase n
                                  (es-contour-vertex)
