@@ -1469,7 +1469,8 @@
                 ;; depending on argument order
                 (labels ((d (a b) (when (/= a b) (signum (- a b))))
                          (p (a b) (or (d (vx a) (vx b))
-                                      (d (vy a) (vy b)))))
+                                      (d (vy a) (vy b))))
+                         (r (x) (when x (rotatef (aref x 2) (aref x 3)))))
                   (let ((s (or (p (b2-dp1 a) (b2-dp1 b))
                                (p (b2-dc1 a) (b2-dc1 b))
                                (p (b2-dp2 a) (b2-dp2 b)))))
@@ -1477,16 +1478,14 @@
                       ((or (not s) (plusp s))
                        (intersect-bezier2-bezier2/range a b at1 at2 bt1 bt2))
                       (t
-                       (multiple-value-bind (r1 r2)
+                       (multiple-value-bind (r1 r2 r3 r4)
                            (intersect-bezier2-bezier2/range b a bt1 bt2 at1 at2)
-                         (when r1
-                           (rotatef (aref r1 2) (aref r1 3)))
+                         (r r1) (r r2) (r r3) (r r4)
                          (cond
-                           (r2
-                            (rotatef (aref r2 2) (aref r2 3))
-                            (values r1 r2))
-                           (r1
-                            (values r1))))))))))))
+                           (r4 (values r1 r2 r3 r4))
+                           (r3 (values r1 r2 r3))
+                           (r2 (values r1 r2))
+                           (r1 (values r1))))))))))))
       (etypecase a
         (segment (segment a b))
         (bezier2 (bezier2 a b))))))
