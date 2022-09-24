@@ -2799,8 +2799,6 @@ b ~s~%   x=~s, angle=~s~%"
     (let ((sc (make-events s))
           (sw (make-sweep s)))
       (update-sweep sw sc :verbose verbose)
-      (if (finished-contours sw)
-          (b::%edit-shape-to-shape
-           (mapcar 'b::%reverse-contour (finished-contours sw))
-           :metadata (b::metadata shape))
-          s))))
+      (b::%edit-shape-to-shape
+       (mapcar 'b::%reverse-contour (finished-contours sw))
+       :metadata (b::metadata shape)))))
