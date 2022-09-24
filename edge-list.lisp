@@ -277,7 +277,8 @@
                                 (push (list tt :linear j) samples))
                               ;; full quadratic
                               (let* ((c (- y1 y))
-                                     (disc (+ b2 (* -4a c))))
+                                     (disc (+ b2 (* -4a c)))
+                                     (eps #.(* 32 double-float-epsilon)))
                                 (cond
                                   ((zerop disc)
                                    ;; hit an extreme, need to
@@ -286,18 +287,37 @@
                                          samples))
                                   ((plusp disc)
                                    ;; 2 solutions, add both to list
-                                   (let* ((r (sqrt (float disc 1d0)))
-                                          (t1 (/ (- -b r) 2a))
-                                          (t2 (/ (+ -b r) 2a)))
+                                   (let* ((rd (sqrt disc))
+                                          (q (* -1/2 (if (minusp b)
+                                                         (- b rd)
+                                                         (+ b rd))))
+                                          (t1 (/ q a))
+                                          (t2 (/ c q)))
                                      (when *dump-mask*
                                        (unless (<= 0 t1 1)
-                                         (format t " drop1 ~s @ ~s~%" t1 j))
+                                         (format t " drop1 ~s @ ~s = ~s~%"
+                                                 t1 j y))
                                        (unless (<= 0 t2 1)
-                                         (format t " drop2 ~s @ ~s~%" t2 j)))
-                                     (when (<= 0 t1 1)
-                                       (push (list t1 :normal j) samples))
-                                     (when (<= 0 t2 1)
-                                       (push (list t2 :normal j) samples))))))))
+                                         (format t " drop2 ~s @ ~s = ~s~%"
+                                                 t2 j y)))
+                                     (labels
+                                         ((p (at)
+                                            (push (list at :normal j) samples))
+                                          (p? (at)
+                                            (cond
+                                              ((<= 0 at 1) (p at))
+                                              ((and (< (- eps) at 0)
+                                                    (if up1
+                                                        (<= y1 y (+ y1 eps))
+                                                        (<= (- y1 eps) y y1)))
+                                               (p 0d0))
+                                              ((and (< 1 at (+ 1 eps))
+                                                    (if up2
+                                                        (<= y2 y (+ y2 eps))
+                                                        (<= (- y2 eps) y y2)))
+                                               (p 1d0)))))
+                                       (p? t1)
+                                       (p? t2))))))))
                    (flet ((x (at)
                             (lerp at
                                   (lerp at x1 xc)
