@@ -22,7 +22,9 @@
 (defvar *txt* nil)
 (defvar *g* nil)
 (defvar *render* t)
-
+(defvar *sdf* nil)
+(defvar *sdf-spread* 4)
+(defvar *sdf-scale* nil)
 (defparameter *ref* nil)
 
 (defun remove-texture ()
@@ -32,10 +34,11 @@
 
 (defun update-texture/a (a)
   (remove-texture)
+  (gl:pixel-store :unpack-alignment 1)
   (destructuring-bind (wy wx wc)
       (array-dimensions a)
     (let* ((tex (gl:create-texture :texture-2d)))
-      (gl:texture-storage-2d tex 1 :rgb8 wx wy)
+      (gl:texture-storage-2d tex 1 :rgba8 wx wy)
       (static-vectors:with-static-vector (s (* wx wy wc)
                                             :element-type '(unsigned-byte 8))
         (loop for sy below wy
@@ -43,10 +46,11 @@
               for r = (array-row-major-index a sy 0 0)
               do (loop for i below (* wx wc)
                        do (setf (aref s (+ dy i))
-                                (row-major-aref a (+ r i))))
-              #++(loop for i below (array-total-size a)
-                       do (setf (row-major-aref s i) (row-major-aref a i))))
-        (gl:texture-sub-image-2d tex 0 0 0 wx wy :rgb :unsigned-byte
+                                (row-major-aref a (+ r i)))))
+        (format t "dims2 ~s ~s ~s~%" wx wy wc)
+        (gl:texture-sub-image-2d tex 0 0 0 wx wy
+                                 (ecase wc (1 :alpha) (2 :rg) (3 :rgb) (4 :rgba))
+                                 :unsigned-byte
                                  (static-vectors:static-vector-pointer s)))
       (gl:texture-parameter tex :texture-min-filter :nearest)
       (gl:texture-parameter tex :texture-mag-filter :nearest)
@@ -54,8 +58,35 @@
       (gl:texture-parameter tex :texture-wrap-t :clamp-to-edge)
       (setf *ref* (list tex wx wy)))))
 
+(defun scale-sdf (sdf)
+  (flet ((s (x)
+           (max 0
+                (min 255
+                     (round (+ 128 (* 127 (/ x *sdf-spread*))))))))
+    (destructuring-bind (h w &optional channels)
+        (array-dimensions (g::image sdf))
+      (let* ((wh (max w h))
+             (out (make-array (list wh wh channels)
+                              :element-type '(unsigned-byte 8)
+                              :initial-element 0))
+             (x (floor (- wh w) 2))
+             (y (floor (- wh h) 2)))
+        (format t "dims ~s ~s ~s~%" w h channels)
+        (loop with si of-type (simple-array single-float (* * *))
+                = (g::image sdf)
+              for ox from x
+              for ix below w
+              do (loop for oy from y
+                       for iy below h
+                       do (loop for i below channels
+                                do (setf (aref out oy ox i)
+                                         (s (aref (g::image sdf)
+                                                  (- h iy 1)
+                                                  ix i))))))
+        out)))
+  )
 
-(defun show (s &key verbose filter render)
+(defun show (s &key verbose filter (render *render*) (sdf *sdf*))
   (setf *txt* nil)
   (setf *g* nil)
   (when s
@@ -140,6 +171,17 @@
                         (d (i::diff r1 r2)))
                    (setf *txt* (format nil "~adiff = ~a~%" *txt* c))
                    (update-texture/a d))))
+             (when sdf
+               (let* ((scale (/ (max (g::aabb-wx (g::bounding-box final))
+                                     (g::aabb-wy (g::bounding-box final)))
+                                64))
+                      (s (g::make-sdf :mtsdf (sdf/cleaner::fix-shape s)
+                                      :spread *sdf-spread*
+                                      :scale (or *sdf-scale* scale))))
+                 (format t "sdf = ~s ~s~%" sdf s)
+                 (update-texture/a (scale-sdf s))
+                 (gl:texture-parameter (car *ref*) :texture-min-filter :linear)
+                 (gl:texture-parameter (car *ref*) :texture-mag-filter :linear)))
              (when verbose
                (format t "got contours:~%")
                (Sdf/Base::%print-contours (i::finished-contours sweep)))
@@ -369,10 +411,14 @@
             'u::graph
             :graphs (list
                      (setf *a*
+                           #++(make-instance
+                            'u::bezier :coefs (u::v2s 0 0 1 0 1 1))
                            (make-instance
                             'u::bezier :coefs (u::v2s 0 0 1 0 1 1)))
                      (setf *b*
                            (make-instance
+                            'u::bezier :coefs (u::v2s 0 0 2 0 1 1))
+                           #++(make-instance
                             'u::bezier :coefs (u::v2s
                                                0 0
                                                1.3750000000000038d0 0.0d0
@@ -410,22 +456,24 @@
   )
 #++
 (add-font "c:/windows/fonts/comic.ttf")
-
+#++
+(add-font "d:/dl/fonts/JuliaMono-ttf/JuliaMono-Regular.ttf")
+#++
+(add-font #P"d:/tmp/ttf/ttf/01c8a011f5e8a37f6a6947f8bde1154cd34d7eca7274e14f7f0872c0b04feb83/DejaVuSansCondensed-Bold.ttf")
 (defmethod u::draw-ui ((w foo) now)
   (let ((u:*theme* u::*dark-theme*)
         (*r* (make-random-state *r*))
-        (u::*text-scale* 3/8))
+        (u::*text-scale* 6/8))
     (u:row
-      #++
-      (when *g2*
-        (let ((u::*show-handles* t))
-          (setf (u::y (elt (u::coefs *a*) 1)) 1
-                (u::y (elt (u::coefs *b*) 1)) 1)
-          (u::column
-            (u::row
-              (u::set-height 2/3)
-              (u::draw-ui *g2* now))
-            (u::draw-ui *g3* now))))
+      #++(when *g2*
+           (let ((u::*show-handles* t))
+             (setf (u::y (elt (u::coefs *a*) 1)) 1
+                   (u::y (elt (u::coefs *b*) 1)) 1)
+             (u::column
+               (u::row
+                 (u::set-height 2/3)
+                 (u::draw-ui *g2* now))
+               (u::draw-ui *g3* now))))
       (u:window (:wx 1/4)
         (when (u::button (if *slow* "SLOW!" "slow?"))
           (setf *slow* (not *slow*)))
@@ -454,17 +502,17 @@
               (when *s*
                 (format t "~&load ~s~%   (~a)~%" (cddddr (car *s*))
                         (third (car *s*)))
-                (time (show (second (car *s*)) :verbose (not ok) :filter t
-                                               :Render *render*))
+                (time (show (second (car *s*)) :verbose (not ok) :filter t))
                 (setf *ok* t))))
           (u::disable (not *s*)
+            (when (u::button (format nil "rq"))
+              (time (show (second (car *s*)) :verbose nil :filter nil))))
+          (u::disable (not *s*)
             (when (u::button (format nil "retry"))
-              (time (show (second (car *s*)) :verbose t :filter nil
-                                             :Render *render*))))
+              (time (show (second (car *s*)) :verbose t :filter nil))))
           (u::disable (not *s*)
             (when (u::button (format nil "re/filter"))
-              (time (show (second (car *s*)) :verbose t :filter t
-                                             :Render *render*)))))
+              (time (show (second (car *s*)) :verbose t :filter t)))))
         (u::disable (not *s*)
           (when (u::button "reload from file")
             (let ((f (fifth (car *s*)))
@@ -473,7 +521,7 @@
                 (zpb-ttf:with-font-loader (l f)
                   (let* ((g (zpb-ttf:index-glyph n l))
                          (s (sdf/ttf::shape-from-glyph g)))
-                    (show s :filter t :Render *render*))))))
+                    (show s :filter t))))))
           (when (u::button "print shape")
             (let ((f (fifth (car *s*)))
                   (n (sixth (car *s*))))
@@ -550,13 +598,25 @@
         (when *g2*
           (when (u::button (if *show-g2* "[*g2*]" "*g2*"))
             (setf *show-g2* (not *show-g2*))))
-        (when (u::button (if *render* "[render]" "render"))
-          (setf *render* (not *render*)))
+        (u:row
+          (when (u::button (if *render* "[diff]" "diff"))
+            (setf *render* (not *render*))
+            (setf *sdf* nil))
+          (flet ((b (l)
+                   (when (u::button (if (eql *sdf* l)
+                                        (format nil "[~(~a~)]" l)
+                                        (format nil "~(~a~)" l)))
+                     (setf *render* nil
+                           *sdf* (if (eql *sdf* l) nil l)))))
+            (b :msdf)
+            (b :sdf/a)
+            (b :rgb)
+            (b :a)))
         #++(sleep 0.08)
         (u::text (format nil "~{~s~%~}" (cddddr (car *s*))))
         (when *txt*
           (u::text *txt*)))
-      (when (and *ref* *render*)
+      (when (and *ref* (or *render* *sdf*))
         (flet ((q (x1 y1 x2 y2)
                  (u:color 1 1 1 1)
                  (u:uv 0 0) (u:vertex x1 y2)
@@ -575,9 +635,32 @@
                    (x2 (+ x1 ww))
                    (y1 (+ (u::pcy) (- (u::pwy) ww)))
                    (y2 (+ y1 ww)))
-              (glim:with-draw (:quads :shader 'u::texture)
-                (q x1 y1 x2 y2)))
-            (3b-glim-ui:dispatch-draws w))))
+              (cond
+                (*render*
+                 (glim:with-draw (:quads :shader 'u::sdf)
+                   (q x1 y1 x2 y2)))
+                ((eql *sdf* :msdf)
+                 (glim:uniform 'u::expand 0)
+                 (glim:uniform 'u::mode 0)
+                 (glim:with-draw (:quads :shader 'u::sdf)
+                   (q x1 y1 x2 y2)))
+                ((eql *sdf* :sdf/a)
+                 (glim:uniform 'u::expand 0)
+                 (glim:uniform 'u::mode 1)
+                 (glim:with-draw (:quads :shader 'u::sdf)
+                   (q x1 y1 x2 y2)))
+                ((eql *sdf* :rgb)
+                 (glim:uniform 'u::expand 0)
+                 (glim:uniform 'u::mode 3)
+                 (glim:with-draw (:quads :shader 'u::sdf)
+                   (q x1 y1 x2 y2)))
+                ((eql *sdf* :a)
+                 (glim:uniform 'u::expand 0)
+                 (glim:uniform 'u::mode 4)
+                 (glim:with-draw (:quads :shader 'u::sdf)
+                   (q x1 y1 x2 y2)))))
+            (3b-glim-ui:dispatch-draws w)
+            (glim:uniform 'u::mode 0))))
       (if (and *g2* *show-g2*)
           (u::draw-ui *g2* now)
           (when *g*
