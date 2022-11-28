@@ -285,7 +285,7 @@
                                              (b2-rx2 edge) (b2-ry2 edge)))))
                    (end-contour)))))))
 
-(defun clean-shape (shape &key (verbose *dump*))
+(defun clean-shape (shape &key (verbose *dump*) min-length)
   ;; return a copy of SHAPE with degenerate contours, curves,
   ;; segments, and points removed
   (let ((es (shape-to-edit-shape shape))
@@ -335,6 +335,22 @@
                (when (typep n 'es-contour-segment)
                  (and (= (p-rx (p1 n)) (p-rx (p2 n)))
                       (= (p-ry (p1 n)) (p-ry (p2 n))))))
+             (too-short (n)
+               (typecase n
+                 (es-contour-segment
+                  (or (empty-seg n)
+                      (and min-length
+                           (<= (rv2dist (p-rv (p1 n)) (p-rv (p2 n)))
+                               min-length))))
+                 (es-contour-bezier2
+                  (or (empty-bez n)
+                      ;; over-estimate length a bit
+                      (and min-length
+                           (<= (+ (rv2dist (p-rv (p1 n))
+                                           (p-rv (control-point n)))
+                                  (rv2dist (p-rv (control-point n))
+                                           (p-rv (p2 n))))
+                               min-length))))))
              (flat-seg (n)
                (when (typep n 'es-contour-segment)
                  (let ((x (when (= (p-rx (p1 n)) (p-rx (p2 n))) (p-rx (p2 n))))
@@ -381,7 +397,7 @@
                                (es-contour-vertex)
                                (es-contour-segment
                                 (cond
-                                  ((empty-seg n)
+                                  ((too-short n)
                                    (when verbose
                                      (format t " flag ~s empty~%" (enl n)))
                                    (setf (gethash n drop) t))))
@@ -394,7 +410,7 @@
                                              (enl (enext (enext n)))))
                                    (setf (gethash n drop) t)
                                    (setf (gethash (enext (enext n)) drop) t))
-                                  ((empty-bez n)
+                                  ((too-short n)
                                    (when verbose
                                      (format t " flag ~s empty~%" (enl n)))
                                    (setf (gethash n drop) t))
@@ -403,7 +419,7 @@
                                      (format t " bez ~s flat~%" (enl n)))
                                    ;; replace it with a segment
                                    (change-class n 'es-contour-segment)
-                                   (when (empty-seg n)
+                                   (when (too-short n)
                                      (break "!~s - ~s~%" (eprev n) (enext n))
                                      (setf (gethash n drop) t))))))
                              ;; return N since we don't modify contour
@@ -426,7 +442,7 @@
                             ((gethash n drop)
                              (when verbose (format t " drop ~s~%" (enl n)))
                              (setf ret (collapse-edge n)))
-                            ((empty-seg n)
+                            ((too-short n)
                              (when verbose (format t " empty ~s~%" (enl n)))
                              (setf ret (collapse-edge n)))
                             ((flat-seg n)
@@ -448,11 +464,11 @@
                                      do (when verbose
                                           (format t " @ ~s = es: ~s, drop:~s, fsc:~s, neq:~s~%"
                                                   (enl n2)
-                                                  (empty-seg n2)
+                                                  (too-short n2)
                                                   (gethash n2 drop)
                                                   (flat-seg-cont f n2)
                                                   (not (eql n n2))))
-                                     while (or (empty-seg n2)
+                                     while (or (too-short n2)
                                                (gethash n2 drop)
                                                (and (flat-seg-cont f n2)
                                                     (not (eql n n2))))
@@ -461,7 +477,7 @@
                                           (format t "-- delete ~s~%" (enl n2)))
                                         (%delete-node n1)
                                         (%delete-node n2))
-                               (when (empty-seg n)
+                               (when (too-short n)
                                  (when verbose (format t "collapse ~s~%" (enl n)))
                                  (setf ret (eprev (collapse-edge n)))
                                  (when verbose
@@ -520,7 +536,7 @@
                                  (es-contour-vertex)
                                  (es-contour-segment
                                   (cond
-                                    ((empty-seg n)
+                                    ((too-short n)
                                      (break "new seg ~s~%" n)
                                      (setf ret (collapse-edge n)))
                                     ((flat-seg n)
@@ -531,17 +547,17 @@
                                                     (eql n2 n))
                                              ;; deleted contour, drop it
                                              do (return-from x nil)
-                                           while (or (empty-seg n2)
+                                           while (or (too-short n2)
                                                      (gethash n2 drop)
                                                      (and (flat-seg-cont f n2)
                                                           (not (eql n n2))))
                                            do (%delete-node n1)
                                               (%delete-node n2))
-                                     (when (empty-seg n)
+                                     (when (too-short n)
                                        (setf ret (eprev (collapse-edge n)))))))
                                  (es-contour-bezier2
                                   (cond
-                                    ((empty-bez n)
+                                    ((too-short n)
                                      (break "new bez ~s~%" n)
                                      (setf ret (collapse-edge n))))))
                                (unless (eql n ret)
@@ -627,9 +643,9 @@
                     (- a (* 2 pi)))
                    (t a))))
              (v2n* (x)
-               (if (< (v2mag x) 0.001)
+               (if (< (v2mag x) 1e-3)
                    (progn
-                     (break "degenerate segment?")
+                     (break "degenerate segment? ~s"  (v2mag x))
                      (v2 0.5 0.5))
                    (v2n x)))
              (b (t1 t2)

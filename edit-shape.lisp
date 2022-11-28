@@ -192,6 +192,9 @@
                        (gethash (enext n) visited))
             finally (return n)))))
 
+(defun map-contour (contour fun)
+  (map-modifying-contour contour (lambda (a) (funcall fun a) a)))
+
 (defun %print-contour (start &key max)
   (let ((c 0)
         (m2 (when max (ceiling max 2))))

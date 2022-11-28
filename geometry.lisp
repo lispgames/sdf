@@ -36,6 +36,8 @@
 (defun aabb-wy (bb)
   (- (aabb-y2 bb) (aabb-y1 bb)))
 
+(defun aabb-area (bb)
+  (* (aabb-wx bb) (aabb-wy bb)))
 
 
 ;; version of aabb that preserves type of inputs, so we can calculate

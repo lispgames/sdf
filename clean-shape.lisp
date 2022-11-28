@@ -2811,12 +2811,35 @@ b ~s~%   x=~s, angle=~s~%"
         (format t ">>>>>>>>>>> result = ~%~s~%" r))
       r)))
 
-(defun fix-shape (shape &key verbose)
+(defun contour-area (contour)
+  (let ((b (b::make-aabb)))
+    (b::map-contour contour
+                    (lambda (a)
+                      (typecase a
+                        (b::es-contour-vertex
+                         (let ((p (b::point a)))
+                           (b::update-aabb b (b::p-dx p) (b::p-dy p))))
+                        (b::es-contour-bezier2
+                         (let ((p (b::control-point a)))
+                           (b::update-aabb b (b::p-dx p) (b::p-dy p)))))))
+    (b::aabb-area b)))
+
+(defun remove-small-contours (contours area)
+  (loop for c in contours
+        unless (<= (contour-area c) area)
+          collect c))
+
+(defun fix-shape (shape &key verbose (min-area 1) (min-length (/ 128d0)))
   (let* ((*id* 10000)
          (s (b::clean-shape shape :verbose verbose)))
     (let ((sc (make-events s))
           (sw (make-sweep s)))
       (update-sweep sw sc :verbose verbose)
-      (b::%edit-shape-to-shape
-       (mapcar 'b::%reverse-contour (finished-contours sw))
-       :metadata (b::metadata shape)))))
+      (b::clean-shape
+       (b::%edit-shape-to-shape
+        (mapcar 'b::%reverse-contour
+                (remove-small-contours (finished-contours sw)
+                                       min-area))
+        :metadata (b::metadata shape))
+       :verbose verbose
+       :min-length min-length))))
