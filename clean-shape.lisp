@@ -2744,20 +2744,26 @@ b ~s~%   x=~s, angle=~s~%"
                             (deferred-update-winding sweep nil verbose))
                           (when *check*
                             (with-simple-restart (ignore "ignore")
-                              (let ((wn 0))
+                              (let ((wn 0)
+                                    (ok t))
                                 (when verbose
                                   (format t "check windings @ ~s~%" y))
                                 (rb::walk (rb sweep)
                                           (lambda (a)
                                             (incf wn (maybe-winding-sign a))
                                             (when verbose
-                                              (format t "~s|~s ~s x=~s~%"
+                                              (format t "~a~s|~s ~s x=~s~%"
+                                                      (if (/= wn (winding-number a))
+                                                          "X" " ")
                                                       (ri wn)
                                                       (ri (winding-number a))
                                                       (nl a)
                                                       (ri (x-at a y))))
                                             (when (/= wn (winding-number a))
-                                              (error "winding # mismatch"))))))))
+                                              (setf ok nil)
+                                              (break "winding mismatch"))))
+                                (unless ok
+                                  (error "winding # mismatch"))))))
 
                         (when verbose
                           (format t "======================================~%"))
