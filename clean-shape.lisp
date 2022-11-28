@@ -2799,7 +2799,7 @@ b ~s~%   x=~s, angle=~s~%"
       (with-simple-restart (ignore "ignore")
         (when t ;; *check*
           (unless (zerop (hash-table-count (contour-index sweep)))
-            (format t "???didn't close all countours?~%")
+            (format t "???didn't close all contours?~%")
             (let ((ci (contour-index sweep)))
               (loop for i in (a:hash-table-keys ci)
                     do (format t " ~s~%" (nl i)))))
