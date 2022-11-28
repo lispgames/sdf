@@ -14,13 +14,16 @@
 (defclass foo (u:window u::bg-star)
   ())
 
+(defvar *filter-contours* nil)
 (defclass bez (u::bezier)
   ((c :initform (let ((a (+ 0.5 (random 0.5))))
                   (list a (+ 0.5(random 1.0)) (+ 0.5 (random 0.5)) 1))
-      :reader c)))
+      :reader c)
+   (contour :initform 0 :Reader contour :initarg :contour)))
 
 (defvar *txt* nil)
 (defvar *g* nil)
+(defvar *current-shape* nil)
 (defvar *render* t)
 (defvar *sdf* nil)
 (defvar *sdf-spread* 4)
@@ -83,12 +86,13 @@
                                          (s (aref (g::image sdf)
                                                   (- h iy 1)
                                                   ix i))))))
-        out)))
-  )
+        out))))
 
 (defun show (s &key verbose filter (render *render*) (sdf *sdf*))
   (setf *txt* nil)
   (setf *g* nil)
+  (setf *current-shape* nil)
+  (setf *filter-contours* nil)
   (when s
     (let* ((s2 (sdf/base::clean-shape s))
            (events (i::make-events s2))
@@ -126,25 +130,42 @@
                (let ((g nil))
                  (g::map-contour-segments
                   s (lambda (c n end)
-                      (declare (ignore c end))
+                      (declare (ignore end))
                       (etypecase n
                         (g::point)
                         (g::segment
                          (push
                           (make-instance
                            'bez :coefs (u::v2s (g::s-dx1 n) (g::s-dy1 n)
-                                               (g::s-dx2 n) (g::s-dy2 n)))
+                                               (g::s-dx2 n) (g::s-dy2 n))
+                           :contour c)
                           g))
                         (g::bezier2
                          (push
                           (make-instance
                            'bez :coefs (u::v2s (g::b2-dx1 n) (g::b2-dy1 n)
                                                (g::b2-dxc n) (g::b2-dyc n)
-                                               (g::b2-dx2 n) (g::b2-dy2 n)))
+                                               (g::b2-dx2 n) (g::b2-dy2 n))
+                           :contour c)
                           g)))))
-                 g)))
+                 g))
+             (areas (shape)
+               (let ((a (make-array (length (g::contours shape)) :initial-element nil)))
+                 (map-into a #'g::make-aabb)
+                 (g::map-contour-segments
+                  shape (lambda (c n e)
+                          (declare (ignore e))
+                          (typecase n
+                            (g::point
+                             (g::update-aabb (aref a c)
+                                             (g::p-dx n) (g::p-dy n)))
+                            (g::bezier2
+                             (g::update-aabb (aref a c)
+                                             (g::b2-dxc n) (g::b2-dyc n))))))
+                 (map 'list #'print a)
+                 (map 'list #'g::aabb-area a))))
         (setf g (s-to-graph s))
-        (when intersect
+        #++(when intersect
           (push (make-instance 'u::points
                                :points (apply #'u::v2s
                                               (loop for (x y) in intersect
@@ -153,13 +174,15 @@
         (let ((final (sdf/base::%edit-shape-to-shape
                       (i::finished-contours sweep))))
           (setf *txt*
-                (format nil "~s events -> ~s~% ~s sweep -> ~s~% = ~s~%~s -> ~s contours~%~s -> ~s nodes~%"
+                (format nil "~s events -> ~s~% ~s sweep -> ~s~% = ~s~%~s -> ~s contours~%~s -> ~s nodes~%areas ~s:~{~% ~s~}~%"
                         ne (q:size events) ns (length (rb::to-list (i::rb sweep)))
                         (length intersect)
                         (length (g::contours s))
                         (length (g::contours final))
                         (hash-table-count (g::%prev s))
-                        (hash-table-count (g::%prev final))))
+                        (hash-table-count (g::%prev final))
+                        (g::aabb-area (g::bounding-box final))
+                        (areas final)))
           #++(Sdf/Base::%print-contours (sdf/base::contours (sdf/base::shape-to-edit-shape s)))
           #++(break "cd" s)
           (cond
@@ -175,16 +198,18 @@
                (let* ((scale (/ (max (g::aabb-wx (g::bounding-box final))
                                      (g::aabb-wy (g::bounding-box final)))
                                 64))
-                      (s (g::make-sdf :mtsdf (sdf/cleaner::fix-shape s)
+                      (s (g::make-sdf :mtsdf (sdf/cleaner::fix-shape
+                                              s :min-area (max 1 (expt scale 2)))
                                       :spread *sdf-spread*
                                       :scale (or *sdf-scale* scale))))
-                 (format t "sdf = ~s ~s~%" sdf s)
+                 (format t "~&sdf = ~s ~s~%  scale = ~s~%" sdf s scale)
                  (update-texture/a (scale-sdf s))
                  (gl:texture-parameter (car *ref*) :texture-min-filter :linear)
                  (gl:texture-parameter (car *ref*) :texture-mag-filter :linear)))
              (when verbose
                (format t "got contours:~%")
                (Sdf/Base::%print-contours (i::finished-contours sweep)))
+             (setf *current-shape* (vector s final))
              (setf *g* (list (make-instance 'u::graph :graphs g :read-only nil)
                              (make-instance
                               'u::graph
@@ -194,13 +219,16 @@
                    do (u::fit-graph-to-handles i :expand 1.1)))
             (t
              (remove-texture)
+             (setf *current-shape* (vector s))
              (setf *g* (make-instance 'u::graph :graphs g :Read-only nil))
              (u::fit-graph-to-handles *g* :expand 1.1))))))))
 
 (defvar *r* (make-random-state))
 (defmethod u::plot :around ((p bez) plotter subdivide)
-  (apply #'u::color (c p))
-  (call-next-method)
+  (when (or (not *filter-contours*)
+            (eql (contour p) *filter-contours*))
+    (apply #'u::color (c p))
+    (call-next-method))
   #++(let* ((tx u:*theme*)
             (u:*theme* (lambda (k)
                          (format t "lookup ~s~%" k)
@@ -209,6 +237,17 @@
                              (let ((u:*theme* tx))
                                (u::theme-color k))))))
        (call-next-method)))
+(defmethod u::coefs :around ((p bez))
+  (if (or (not *filter-contours*)
+          (eql (contour p) *filter-contours*))
+      (call-next-method)
+      #()))
+(defmethod u::handles :around ((p bez))
+  (if (or (not *filter-contours*)
+          (eql (contour p) *filter-contours*))
+      (call-next-method)
+      #()))
+
 (defvar *n* 0)
 (defvar *s* nil)
 (pop *s*)
@@ -452,18 +491,25 @@
                                    (let ((c (zpb-ttf:code-point g)))
                                      (when c (code-char c))))
                              sdf/cleaner::*error-shapes*))))
-                 (format t "~&==~s / ~s==~%" i cc)))))
-  )
+                 (format t "~&==~s / ~s==~%" i cc))))))
 #++
 (add-font "c:/windows/fonts/comic.ttf")
+#++
+(add-font "c:/windows/fonts/bahnschrift.ttf")
 #++
 (add-font "d:/dl/fonts/JuliaMono-ttf/JuliaMono-Regular.ttf")
 #++
 (add-font #P"d:/tmp/ttf/ttf/01c8a011f5e8a37f6a6947f8bde1154cd34d7eca7274e14f7f0872c0b04feb83/DejaVuSansCondensed-Bold.ttf")
+
 (defmethod u::draw-ui ((w foo) now)
+  #++
+  (cffi:foreign-funcall-pointer
+   (funcall %gl:*gl-get-proc-address* "wglSwapIntervalEXT")
+   nil :int 1 :int)
+
   (let ((u:*theme* u::*dark-theme*)
         (*r* (make-random-state *r*))
-        (u::*text-scale* 6/8))
+        (u::*text-scale* 5/8))
     (u:row
       #++(when *g2*
            (let ((u::*show-handles* t))
@@ -480,6 +526,17 @@
         (when (u::button (format nil "show handles ~s" u::*show-handles*))
           (setf u::*show-handles* (not u::*show-handles*)))
         (when *slow* (sleep 0.1))
+        (u:row
+          (when (u::button (format nil "@"))
+            (let ((chars '(#\cyrillic_letter_multiocular_o #\@ #\ξ)))
+              (let ((a (remove-if-not (lambda (a) (member a chars))
+                                      i::*shapes* :key 'eighth)))
+                (setf *s* (append a *s*))))
+            #++
+            (let ((a (remove #\ξ i::*shapes* :key 'eighth :test-not 'char=))
+                  (b (find #\@ i::*shapes* :key 'eighth)))
+              (push a *s*)
+              (push b *s*))))
         (u:row
           (when (u::button (format nil "start (~s)"(length i::*shapes*)))
             (setf *s* i::*shapes*))
@@ -612,6 +669,21 @@
             (b :sdf/a)
             (b :rgb)
             (b :a)))
+        (u:row
+          (u:text "c:")
+          (when (u:button (if *filter-contours* "*" "[*]"))
+            (setf *filter-contours* nil))
+          (if *g*
+              (let ((shape (aref *current-shape*
+                                 (if (consp *g*)
+                                     *tab*
+                                     0))))
+                (loop for i below (length (g::contours shape))
+                      when (u::button (if (eql *filter-contours* i)
+                                          (format nil "[~a]" i)
+                                          (format nil "~a" i)))
+                        do (setf *filter-contours* i)))
+              (setf *filter-contours* nil)))
         #++(sleep 0.08)
         (u::text (format nil "~{~s~%~}" (cddddr (car *s*))))
         (when *txt*
@@ -637,6 +709,8 @@
                    (y2 (+ y1 ww)))
               (cond
                 (*render*
+                 (glim:uniform 'u::expand 0)
+                 (glim:uniform 'u::mode 3)
                  (glim:with-draw (:quads :shader 'u::sdf)
                    (q x1 y1 x2 y2)))
                 ((eql *sdf* :msdf)
