@@ -84,9 +84,20 @@
   (setf (slot-value o 'winding-sign) (signum (- (t1 o) (t2 o))))
   (let ((e (edge o)))
     ;; find y value of last endpoint
-    (let ((p1 (b::eval-at (edge o) (t1 o)))
-          (p2 (b::eval-at (edge o) (t2 o))))
-      (setf (slot-value o 'y-max) (max (b::vy p1) (b::vy p2))))
+
+    ;; todo: add a flag to edge to indicate an endpoint is split, and
+    ;; use the split-point directly in that case instead of evaluating
+    ;; and then comparing to split point
+    (let* ((p1 (b::eval-at (edge o) (t1 o)))
+           (p2 (b::eval-at (edge o) (t2 o)))
+           (max (max (b::vy p1) (b::vy p2))))
+      (setf (slot-value o 'y-max) max)
+      ;; use Y from split point if available
+      (when (and (split-point o)
+                 (< (abs (- (b::vy (split-point o))
+                            max))
+                    (* 128 (b::%bcs-eps (edge o)))))
+        (setf (slot-value o 'y-max) (b::vy (split-point o)))))
     ;; tangent/curvature of segment doesn't change, so set it once on init
     (when (typep e 'b::segment)
       (let* ((x1 (b::s-dx1 e))
