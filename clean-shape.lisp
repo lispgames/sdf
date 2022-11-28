@@ -2666,6 +2666,7 @@ b ~s~%   x=~s, angle=~s~%"
                         (restart-case
                             (progn
                               (flet ((u (n x y at &optional force)
+                                       (declare (ignorable force))
                                        (let ((st (or (and (/= (t1 n) 0)
                                                           (/= (t1 n) 1)
                                                           (t1 n))
