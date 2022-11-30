@@ -166,15 +166,21 @@
                  (map 'list #'g::aabb-area a))))
         (setf g (s-to-graph s))
         #++(when intersect
-          (push (make-instance 'u::points
-                               :points (apply #'u::v2s
-                                              (loop for (x y) in intersect
-                                                    collect x collect y)))
-                g))
-        (let ((final (sdf/base::%edit-shape-to-shape
-                      (i::finished-contours sweep))))
+             (push (make-instance 'u::points
+                                  :points (apply #'u::v2s
+                                                 (loop for (x y) in intersect
+                                                       collect x collect y)))
+                   g))
+        (let* ((scale (/ (max (g::aabb-wx (g::bounding-box s))
+                              (g::aabb-wy (g::bounding-box s)))
+                         40))
+               (min-area (expt scale 2))
+               (final #++(sdf/base::%edit-shape-to-shape
+                          (i::finished-contours sweep))
+                      (sdf/cleaner::fix-shape
+                       s :min-area (max 1 min-area))))
           (setf *txt*
-                (format nil "~s events -> ~s~% ~s sweep -> ~s~% = ~s~%~s -> ~s contours~%~s -> ~s nodes~%areas ~s:~{~% ~s~}~%"
+                (format nil "~s events -> ~s~% ~s sweep -> ~s~% = ~s~%~s -> ~s contours~%~s -> ~s nodes~%areas ~s (min ~,3f @ ~,3f):~{~% ~s~}~%"
                         ne (q:size events) ns (length (rb::to-list (i::rb sweep)))
                         (length intersect)
                         (length (g::contours s))
@@ -182,6 +188,7 @@
                         (hash-table-count (g::%prev s))
                         (hash-table-count (g::%prev final))
                         (g::aabb-area (g::bounding-box final))
+                        min-area scale
                         (areas final)))
           #++(Sdf/Base::%print-contours (sdf/base::contours (sdf/base::shape-to-edit-shape s)))
           #++(break "cd" s)
@@ -195,13 +202,9 @@
                    (setf *txt* (format nil "~adiff = ~a~%" *txt* c))
                    (update-texture/a d))))
              (when sdf
-               (let* ((scale (/ (max (g::aabb-wx (g::bounding-box final))
-                                     (g::aabb-wy (g::bounding-box final)))
-                                64))
-                      (s (g::make-sdf :mtsdf (sdf/cleaner::fix-shape
-                                              s :min-area (max 1 (expt scale 2)))
-                                      :spread *sdf-spread*
-                                      :scale (or *sdf-scale* scale))))
+               (let ((s (g::make-sdf :mtsdf final
+                                     :spread *sdf-spread*
+                                     :scale (or *sdf-scale* scale))))
                  (format t "~&sdf = ~s ~s~%  scale = ~s~%" sdf s scale)
                  (update-texture/a (scale-sdf s))
                  (gl:texture-parameter (car *ref*) :texture-min-filter :linear)
@@ -671,13 +674,23 @@
             (b :a)))
         (u:row
           (u:text "c:")
-          (when (u:button (if *filter-contours* "*" "[*]"))
-            (setf *filter-contours* nil))
           (if *g*
               (let ((shape (aref *current-shape*
                                  (if (consp *g*)
                                      *tab*
                                      0))))
+                (when (u::button ">>")
+                  (if *filter-contours*
+                      (progn
+                        (setf *filter-contours*
+                              (+ *filter-contours* 1))
+                        (unless (< -1
+                                   *filter-contours*
+                                   (length (g::contours shape)))
+                          (setf *filter-contours* nil)))
+                      (setf *filter-contours* 0)))
+                (when (u:button (if *filter-contours* "*" "[*]"))
+                  (setf *filter-contours* nil))
                 (loop for i below (length (g::contours shape))
                       when (u::button (if (eql *filter-contours* i)
                                           (format nil "[~a]" i)
