@@ -2,6 +2,7 @@
 
 (declaim (inline %make-aabb aabb-p1 aabb-p2 make-aabb
                  aabb-x1 aabb-y1 aabb-x2 aabb-y2))
+
 (defstruct (aabb (:constructor %make-aabb (p1 p2)))
   (p1 (v2 0d0 0d0) :type v2)
   (p2 (v2 0d0 0d0) :type v2))
@@ -673,10 +674,10 @@
         (v2 x y)))))
 
 (defun intersect-segment-bezier2 (a b)
-  (break "todo"))
+  (ebreak "todo"))
 
 (defun intersect-bezier2-bezier2 (a b)
-  (break "todo"))
+  (ebreak "todo"))
 
 (defun intersect (a b)
   (flet ((segment (a b)
@@ -850,7 +851,7 @@
          (if (zerop tb)
              ;; horizontal line, no zeros (or same line)
              (if (zerop tc)
-                 (break "coincident lines?")
+                 (ebreak "coincident lines?")
                  nil)
              (let ((bt (inb (- (/ tc tb)))))
                (when bt
@@ -1195,7 +1196,7 @@
               (rotatef t2a t2b))
             (cond
               ((and t1a t1b t2a t2b)
-               (break "2 solutions?")
+               (ebreak "2 solutions?")
                (values (v2->4 (e bc b2 t1b) t1a t1b)
                        (v2->4 (e bc b2 t2b) t2a t2b)))
               ((and t1a t1b)

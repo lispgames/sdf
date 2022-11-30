@@ -382,7 +382,7 @@
           for pdp = (when dp
                       (pseudo-distance p s dp pdist))
           when (complexp dp)
-            do (break "complex ~s?" dp)
+            do (ebreak "complex ~s?" dp)
           do (when dp
                (loop for i below 3
                      when (and

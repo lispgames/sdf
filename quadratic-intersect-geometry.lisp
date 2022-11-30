@@ -289,7 +289,7 @@
                            (when (= nd1 nd2 0)
                              ;; todo: figure out what is going on when
                              ;; both derivatives are 0
-                             (break "todo"))
+                             (ebreak "todo"))
                            (when (eql ns :??)
                              (when (eql state :??)
                                ;; previous intersection was ambiguous
@@ -391,7 +391,7 @@
       (unless (and (<= min d0 max)
                    (<= min d1 max)
                    (<= min d2 max))
-        (break "fat line doesn't contain curve ~s~%~s~%~s ~S~%~S ~s~%~S ~s"
+        (ebreak "fat line doesn't contain curve ~s~%~s~%~s ~S~%~S ~s~%~S ~s"
                fl b
                d0 (<= min d0 max)
                d1 (<= min d1 max)
@@ -409,7 +409,7 @@
       (unless (and (<= min d0 max)
                    (<= min d1 max)
                    (<= min d2 max))
-        (break "fat line doesn't contain curve ~s~%~s~%~s ~S~%~S ~s~%~S ~s"
+        (ebreak "fat line doesn't contain curve ~s~%~s~%~s ~S~%~S ~s~%~S ~s"
                fl (list p0 p1 p2)
                d0 (<= min d0 max)
                d1 (<= min d1 max)
@@ -545,7 +545,7 @@
             (d (+ (* s (+ x0 x2 (* -2 x1)))
                   y0 y2 (* -2 y1))))
         (when (zerop d)
-          (break "missed?"))
+          (ebreak "missed?"))
         (if (zerop d)
             nil
             (/ n d))))))
@@ -613,7 +613,7 @@
                      (setf at (- 1 at)
                            tan (b2-tangent-at b at)
                            p-at (b2-perpendicular-at b tan))
-                     (unless p-at (break "couldn't find directrix?")))
+                     (unless p-at (ebreak "couldn't find directrix?")))
                    (intersect-lines tan (b2-tangent-at b p-at))))
          (directrix (perpendicular-through-point axis dpoint))
          ;; point on directrix closest to vertex
@@ -670,7 +670,7 @@
                      (setf at (- 1 at)
                            tan (b2-tangent-at b at)
                            p-at (b2-perpendicular-at b tan))
-                     (unless p-at (break "couldn't find directrix?")))
+                     (unless p-at (ebreak "couldn't find directrix?")))
                    (intersect-lines tan (b2-tangent-at b p-at))))
          (directrix (perpendicular-through-point axis dpoint))
          ;; point on directrix closest to vertex

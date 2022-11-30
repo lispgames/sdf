@@ -75,13 +75,13 @@
             (split-b/y (y1 yc y2)
               (let* ((yc-y1 (- yc y1)))
                 (when (= yc-y1 (- y2 yc))
-                  (break "? ~s ~s ~s" y1 yc y2))
+                  (ebreak "? ~s ~s ~s" y1 yc y2))
                 ;; return T of extreme point on curve
                 (/ yc-y1 (- yc-y1 (- y2 yc)))))
             (split-b/x (x1 xc x2)
               (let* ((xc-x1 (- xc x1)))
                 (when (= xc-x1 (- x2 xc))
-                  (break "? ~s ~s ~s" x1 xc x2))
+                  (ebreak "? ~s ~s ~s" x1 xc x2))
                 ;; return T of extreme point on curve
                 (/ xc-x1 (- xc-x1 (- x2 xc)))))
             (%update-aabb-for-b2 (x1 y1 xc yc x2 y2)

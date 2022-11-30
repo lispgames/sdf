@@ -6,11 +6,12 @@
                     (#:b #:sdf/base)
                     (#:rb #:sdf/rb)
                     (#:q #:sdf/f+f-pqueue)
-                    (#:dq #:sdf/df-pqueue)))
+                    (#:dq #:sdf/df-pqueue))
+  (:import-from #:sdf/base
+                #:*check*
+                #:ebreak))
 
 (in-package #:sdf/cleaner)
-
-(defvar *check* t) ;; enable expensive consistency checks
 
 ;; debugging vars, used by vis and test code in clean-scratch
 (defvar *shapes* ())
@@ -180,7 +181,7 @@
                         (x1 (b::s-dx1 n))
                         (x2 (b::s-dx2 n)))
                    (when (or (< at 0) (> at 1))
-                     (break "bat at ~s?" at))
+                     (ebreak "bat at ~s?" at))
                    (values (+ x1 (* (- x2 x1) at))
                            at)))
                 (t
@@ -226,7 +227,7 @@
                                 y
                                 t1 t2 tmin tmax
                                 (x n t1) (x n t2))
-                         (break "found 2 X values for Y in curve?~% y=~s~% t = ~s, ~s (~s - ~s)~% x= ~s, ~s~%"
+                         (ebreak "found 2 X values for Y in curve?~% y=~s~% t = ~s, ~s (~s - ~s)~% x= ~s, ~s~%"
                                 y
                                 t1 t2 tmin tmax
                                 (x n t1) (x n t2)))
@@ -1253,10 +1254,10 @@
                        (format t "$$$~s: ~s refs =~%" k v)
                        (b::%print-contour k :max 10)))
             (unless (zerop bad)
-              (break "~s bad refs?~% ~s entries in index" bad
+              (ebreak "~s bad refs?~% ~s entries in index" bad
                      (hash-table-count ci)))
             (when (oddp (hash-table-count ci))
-              (break "odd # of entries in index? ~s" (hash-table-count ci))))
+              (ebreak "odd # of entries in index? ~s" (hash-table-count ci))))
           (when verbose
             (when intersect-in
               (format t "in:~%")
@@ -1880,7 +1881,7 @@ b ~s~%   x=~s, angle=~s~%"
                    (when verbose
                      (format t " ///swap @ intersection~%   ~s~%   ~s~%"
                              (nl a) (nl b)))
-                   #++(break "swap1")
+                   #++(ebreak "swap1")
                    (let* ((p (rb:previous (%node a)))
                           (wn (if p
                                   (winding-number (rb:value p))
@@ -2055,7 +2056,7 @@ b ~s~%   x=~s, angle=~s~%"
                                                  x (nl a)))))
                            ;; todo: figure out which way of calculating it
                            ;; is right if this doesn't match
-                           (break "winding mismatch? ~s ~s"
+                           (ebreak "winding mismatch? ~s ~s"
                                   winding-in-right w2)))))
              (expand-bounds ()
                ;; collecting results here instead of
@@ -2126,7 +2127,7 @@ b ~s~%   x=~s, angle=~s~%"
          ;; probably shouldn't happen, most likely failed to merge 2
          ;; consecutive horizontal edges?
          (restart-case
-             (break "horizontal edge event without adjacent edge? e = ~s~%" e)
+             (ebreak "horizontal edge event without adjacent edge? e = ~s~%" e)
            (error () (error "horizontal edge event without adjacent edge? e = ~s~%" e))))
         ((and (not (cdr e)) (typep e1 'horizontal-intersect-event))
          (assert (not result))
@@ -2253,7 +2254,7 @@ b ~s~%   x=~s, angle=~s~%"
                                      (when verbose
                                        (format t "  -> add hintersect @ ~s~%"
                                                ax))
-                                     #++(break " ~s - ~s - ~s~% ~s" x1 x x2 a)
+                                     #++(ebreak " ~s - ~s - ~s~% ~s" x1 x x2 a)
                                      (dq:enqueue
                                       xq
                                       (make-instance 'horizontal-intersect-event
@@ -2329,7 +2330,7 @@ b ~s~%   x=~s, angle=~s~%"
                              (let ((epy (* 1 (abs y)
                                            double-float-epsilon)))
                                (when verbose
-                                 (break "a~s < p~s?~%a~s ? p~s~%~
+                                 (ebreak "a~s < p~s?~%a~s ? p~s~%~
  a~s ? p~s~%~
  a<p:~s. p<a:~s~%~
  a<p:~s. p<a:~s~%"
@@ -2439,7 +2440,7 @@ b ~s~%   x=~s, angle=~s~%"
                            ((and (typep ei 'b::bezier2) (typep er 'b::bezier2))
                             (when verbose (format t " stacked bezier2~%"))
                             (push i stack))
-                           (t (break "~s ~s~%~s ~s~%"
+                           (t (ebreak "~s ~s~%~s ~s~%"
                                      (type-of ei) ei
                                      (type-of er) er))))
                   else
@@ -2537,7 +2538,7 @@ b ~s~%   x=~s, angle=~s~%"
                            (setf intersect-out
                                  (remove-if-not 'on-boundary intersect-out)))
                           (t ;; not sure if this can happen inspect further
-                           (break "too many boundaries on stack? ~s~%~{~s~%~}"
+                           (ebreak "too many boundaries on stack? ~s~%~{~s~%~}"
                                   n (mapcar 'nl stack)))))))))))
     ;; add active horizontal edges to results
     (when (and horizontal result)
@@ -2772,7 +2773,7 @@ b ~s~%   x=~s, angle=~s~%"
                                                       (ri (x-at a y))))
                                             (when (/= wn (winding-number a))
                                               (setf ok nil)
-                                              (break "winding mismatch"))))
+                                              (ebreak "winding mismatch"))))
                                 (unless ok
                                   (error "winding # mismatch"))))))
 

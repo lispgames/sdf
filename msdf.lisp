@@ -358,7 +358,7 @@
                       ;; not a sharp corner, just pick one (happens when
                       ;; we split a contour with only 1 corner)
                       prev)
-                     (t (break "??")))))
+                     (t (ebreak "??")))))
                (pseudo-distance (x y n c)
                  (declare (type single-float x y))
                  (etypecase n
@@ -487,7 +487,7 @@
                        ((> x (aref samples/x (1+ i)))
                         (+ i 1))
                        (t #++ (< y (aref samples/y (1+ j)))
-                          (break "a")
+                          (ebreak "a")
                           #++(- (length samples/x) 2)))))
                  (j (y)
                    (declare (type double-float y))
@@ -500,7 +500,7 @@
                         j)
                        ((> y (aref samples/y (1+ j)))
                         (+ j 1))
-                       (t (break "b"))))))
+                       (t (ebreak "b"))))))
           (declare (inline eval-at))
           (map-contour-segments shape
                                 (lambda (c# n e)
@@ -514,26 +514,27 @@
                                                 (i (p-dx n)))
                                           1)))))
 
-        (with-simple-restart (continue "ignore assertion failure")
-            (let ((img image))
-              (declare (optimize (speed 1)))
-              (destructuring-bind (wy wx c) (array-dimensions img)
-                (declare (ignore c))
-                (flet ((med3 (x y)
-                         (let ((a (aref img y x 0))
-                               (b (aref img y x 1))
-                               (c (aref img y x 2)))
-                           (max (min a b) (min (max a b) c)))))
-                  (loop for i below wx
-                        do (assert (minusp (med3 i 0)))
-                           (assert (minusp (med3 i (1- wy))))
-                           (assert (minusp (aref img 0 i 3)))
-                           (assert (minusp (aref img (1- wy) i 3))))
-                  (loop for j below wy
-                        do (assert (minusp (med3 0 j)))
-                           (assert (minusp (med3 (1- wx) j)))
-                           (assert (minusp (aref img j 0 3)))
-                           (assert (minusp (aref img j (1- wx) 3))))))))
+        (when *check*
+         (with-simple-restart (continue "ignore assertion failure")
+           (let ((img image))
+             (declare (optimize (speed 1)))
+             (destructuring-bind (wy wx c) (array-dimensions img)
+               (declare (ignore c))
+               (flet ((med3 (x y)
+                        (let ((a (aref img y x 0))
+                              (b (aref img y x 1))
+                              (c (aref img y x 2)))
+                          (max (min a b) (min (max a b) c)))))
+                 (loop for i below wx
+                       do (assert (minusp (med3 i 0)))
+                          (assert (minusp (med3 i (1- wy))))
+                          (assert (minusp (aref img 0 i 3)))
+                          (assert (minusp (aref img (1- wy) i 3))))
+                 (loop for j below wy
+                       do (assert (minusp (med3 0 j)))
+                          (assert (minusp (med3 (1- wx) j)))
+                          (assert (minusp (aref img j 0 3)))
+                          (assert (minusp (aref img j (1- wx) 3)))))))))
         (fix-msdf image pimage corner-cells)
 
         (when *limit-msdf-range*

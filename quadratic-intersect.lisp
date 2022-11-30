@@ -192,7 +192,7 @@
       (unless (and (= n1 1)
                    (= (aref x1 0) t0)
                    (= (aref x1 1) t1))
-        (break "intersect~% ~s ~s~% was ~s, ~s" n1 x1 t0 t1))))
+        (ebreak "intersect~% ~s ~s~% was ~s, ~s" n1 x1 t0 t1))))
   fla)
 
 (defun %clip1 (b fl epsilon)

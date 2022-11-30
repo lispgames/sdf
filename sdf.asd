@@ -7,6 +7,7 @@
                           float-features)
   :serial t
   :components ((:file "packages-base")
+               (:file "util")
                (:file "v2")
                (:file "geometry")
                (:file "quadratic-intersect-common")

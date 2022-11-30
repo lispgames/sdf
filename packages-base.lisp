@@ -38,7 +38,8 @@
            #:s-x1
            #:s-y1
            #:s-x2
-           #:s-y2))
+           #:s-y2
+           #:*check*))
 
 (defpackage #:sdf/quadratic-intersect/int
   (:use #:cl)

@@ -94,7 +94,7 @@
                               (when (and *break-on-mismatch*
                                          (numberp *break-on-mismatch*)
                                          (> d *break-on-mismatch*))
-                                (break "~s,~s = ~s,~s (~f,~f)~% d1 = ~s~% dc = ~s~%ds = ~s @ ~s~%~s"
+                                (ebreak "~s,~s = ~s,~s (~f,~f)~% d1 = ~s~% dc = ~s~%ds = ~s @ ~s~%~s"
                                        x y
                                        (aref (b::samples/x sdf) x)
                                        (aref (b::samples/y sdf) y)
@@ -154,7 +154,7 @@
                     for x = (aref (b::samples/x sdf) i)
                     do (format t "  ~s : ~,3f : ~s~%" i x e)))
             (when *break-on-mismatch*
-              (break "mismatch"))))))
+              (ebreak "mismatch"))))))
     mask2))
 
 (defun leak-test-file* (font collection size spread &key (start 0))

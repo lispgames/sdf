@@ -31,9 +31,9 @@
         for (a2 b2) = (car i2)
         while (and i1 i2)
         when (< b1 a1)
-          do (break "a backwards?")
+          do (ebreak "a backwards?")
         when (< b2 a2)
-          do (break "a backwards?")
+          do (ebreak "a backwards?")
         do (cond
              ;; a1-b1 is before a2, no overlap
              ((> a2 b1)
@@ -53,7 +53,7 @@
                           (> (max a1 a2) t1))
                 (push (list (max a1 a2 t0) (min b2 t1)) r))
               (pop i2))
-             (t (break "what is this?")))
+             (t (ebreak "what is this?")))
         finally (return (if (cdr r) (sort r '< :key 'car) r))))
 
 (defun %union-regions (i1 i2 t0 t1)
@@ -69,9 +69,9 @@
         for (a2 b2) = (car i2)
         while (or i1 i2)
         when (and i1 (< b1 a1))
-          do (break "a backwards?")
+          do (ebreak "a backwards?")
         when (and i2 (< b2 a2))
-          do (break "a backwards?")
+          do (ebreak "a backwards?")
         do (cond
              ;; a1-b1 is before a2 or i2 empty =  no overlap, keep segment
              ((and a1 (or (not a2) (< b1 a2)))
@@ -97,5 +97,5 @@
               (unless start
                 (setf start (min a1 a2)))
               (pop i2))
-             (t (break "what is this?")))
+             (t (ebreak "what is this?")))
         finally (return (nreverse r))))

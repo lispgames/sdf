@@ -252,7 +252,7 @@
                    (setf rev (remove nil rev))
                    (when (and start (equalp (flat-seg end) start))
 
-                     (break "todo: join segments that overlap start")))
+                     (ebreak "todo: join segments that overlap start")))
 
 
                  ;; contour has no area if: no bez2 and 2 or fewer lines
@@ -420,7 +420,7 @@
                                    ;; replace it with a segment
                                    (change-class n 'es-contour-segment)
                                    (when (too-short n)
-                                     (break "!~s - ~s~%" (eprev n) (enext n))
+                                     (ebreak "!~s - ~s~%" (eprev n) (enext n))
                                      (setf (gethash n drop) t))))))
                              ;; return N since we don't modify contour
                              n))))
@@ -537,7 +537,7 @@
                                  (es-contour-segment
                                   (cond
                                     ((too-short n)
-                                     (break "new seg ~s~%" n)
+                                     (ebreak "new seg ~s~%" n)
                                      (setf ret (collapse-edge n)))
                                     ((flat-seg n)
                                      (loop with f = (flat-seg n)
@@ -558,7 +558,7 @@
                                  (es-contour-bezier2
                                   (cond
                                     ((too-short n)
-                                     (break "new bez ~s~%" n)
+                                     (ebreak "new bez ~s~%" n)
                                      (setf ret (collapse-edge n))))))
                                (unless (eql n ret)
                                  (format t " ~s -> ~s~%" n ret))
@@ -645,7 +645,7 @@
              (v2n* (x)
                (if (< (v2mag x) 1e-3)
                    (progn
-                     (break "degenerate segment? ~s"  (v2mag x))
+                     (ebreak "degenerate segment? ~s"  (v2mag x))
                      (v2 0.5 0.5))
                    (v2n x)))
              (b (t1 t2)
