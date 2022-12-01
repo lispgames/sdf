@@ -6,6 +6,13 @@
            #:create-bmfont))
 (in-package #:sdf-bmfont)
 
+(defun to-bmfont-kerning-table (kerning)
+  (let ((kt (make-hash-table)))
+    (loop for k being the hash-keys of kerning using (hash-value v)
+          do (setf (3b-bmfont-common:%kerning kt (car k) (cdr k))
+                   v))
+    kt))
+
 (defun to-bmfont (atlas)
   (let* ((metrics (st::atlas-metrics atlas))
          (pad (st::atlas-padding atlas))
@@ -26,21 +33,22 @@
             for (xo yo) = (st::glyph-origin glyph)
             for i from 0
             do (setf (gethash char chars)
-                     (list :id (char-code char)
-                           :index i
-                           :char (string char)
-                           :x x
-                           :y y
-                           :width w
-                           :height h
-                           :xoffset #++(+ (- (float xo)) spread)
-                                    (- (float xo))
-                           :yoffset (float (+ base
-                                              (- yo h)
-                                              spread))
-                           :xadvance (st::glyph-advance-width glyph)
-                           :chnl (ecase channels (1 4) (2 6) (3 7) (4 15))
-                           :page 0)))
+                     (3b-bmfont-common:make-glyph
+                      :id (char-code char)
+                      :index i
+                      :char (string char)
+                      :x x
+                      :y y
+                      :width w
+                      :height h
+                      :xoffset (- (coerce xo 'single-float))
+                      :yoffset (coerce (+ base
+                                         (- yo h)
+                                         spread)
+                                       'single-float)
+                      :xadvance (st::glyph-advance-width glyph)
+                      :chnl (ecase channels (1 4) (2 6) (3 7) (4 15))
+                      :page 0)))
       (make-instance '3b-bmfont-common:bmfont
                      :face NIL
                      :size (st::font-size metrics)
@@ -59,7 +67,8 @@
                      :alpha-chnl (if (= 4 channels) :glyph :zero)
                      :chars chars
                      :pages (make-array 1 :initial-element (list :id 0 :file NIL))
-                     :kernings (st::font-kerning-table metrics)
+                     :kernings (to-bmfont-kerning-table
+                                (st::font-kerning-table metrics))
                      :distance-field (list :field-type (st::atlas-field-type atlas)
                                            :distance-range (* 2 (st::atlas-distance-range atlas)))))))
 
