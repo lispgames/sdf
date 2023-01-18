@@ -210,11 +210,11 @@
                       ;; spending the time doing a few extra w+h packs
                       ;; with different starting sizes when we want to
                       ;; optimize
-                      :sorts '(binpack/2::sort-rects/w+h-desc)
+                      :sorts '(binpack/2:sort-rects/w+h-desc)
                       :growth-policy
                       (when (or (eql width :auto)
                                 (eql height :auto))
-                        (make-instance 'binpack/2::shaping-quantized
+                        (make-instance 'binpack/2:shaping-quantized
                                        :w w1
                                        :h h1
                                        :dx auto-size-granularity-x
@@ -256,9 +256,9 @@
                                   rects
                                   max-width max-height
                                   :multipage nil
-                                  :sorts '(binpack/2::sort-rects/w+h-desc)
+                                  :sorts '(binpack/2:sort-rects/w+h-desc)
                                   :growth-policy
-                                  (make-instance 'binpack/2::shaping-quantized
+                                  (make-instance 'binpack/2:shaping-quantized
                                                  :w w1
                                                  :h h1
                                                  :dx auto-size-granularity-x
