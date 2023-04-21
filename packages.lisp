@@ -1,11 +1,16 @@
 (defpackage #:sdf
-  (:use :cl :zpb-ttf)
+  (:use :cl)
+  (:local-nicknames (#:b #:sdf/base)
+                    (#:st #:sdf/ttf))
   (:export #:make-atlas
            #:save-atlas
 
+           #:atlas-field-type
+           #:atlas-distance-range
            #:atlas-image
            #:atlas-metrics
 
+           #:font-size
            #:font-glyphs
            #:font-ascender
            #:font-descender

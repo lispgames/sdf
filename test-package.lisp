@@ -1,0 +1,11 @@
+#++ (ql:quickload '(sdf/test))
+(defpackage #:sdf/test
+  (:use :cl :parachute)
+  (:local-nicknames (#:a #:alexandria-2)
+                    (#:i #:sdf/cleaner)
+                    (#:g #:sdf/base)
+                    (#:b #:sdf/base)
+                    (#:f #:sdf/ttf)
+                    (#:qi #:sdf/quadratic-intersect)
+                    (#:qii #:sdf/quadratic-intersect/int)
+                    (#:rb #:sdf/rb)))
